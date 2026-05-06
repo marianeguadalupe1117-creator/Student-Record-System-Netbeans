@@ -42,16 +42,15 @@ public class AdminAIFrame extends javax.swing.JFrame {
         appRootPanel = new javax.swing.JPanel();
         headerPanel = new javax.swing.JPanel();
         titleTextPanel = new javax.swing.JPanel();
-        pageTitleLabel = new javax.swing.JLabel();
         pageSubtitleLabel = new javax.swing.JLabel();
         chipsPanel = new javax.swing.JPanel();
+        backHomeButton = new javax.swing.JButton();
         aiReadyChipPanel = new javax.swing.JPanel();
         aiReadyLabel = new javax.swing.JLabel();
         adminModeChipPanel = new javax.swing.JPanel();
         adminModeLabel = new javax.swing.JLabel();
         shellPanel = new javax.swing.JPanel();
         shellHeaderPanel = new javax.swing.JPanel();
-        avatarLabel = new javax.swing.JLabel();
         assistantTextPanel = new javax.swing.JPanel();
         assistantNameLabel = new javax.swing.JLabel();
         assistantDescLabel = new javax.swing.JLabel();
@@ -84,11 +83,6 @@ public class AdminAIFrame extends javax.swing.JFrame {
         titleTextPanel.setOpaque(false);
         titleTextPanel.setLayout(new java.awt.GridLayout(2, 1, 0, 4));
 
-        pageTitleLabel.setFont(new java.awt.Font("Segoe UI", 1, 30)); // NOI18N
-        pageTitleLabel.setForeground(new java.awt.Color(7, 16, 31));
-        pageTitleLabel.setText("Ana Admin AI Command Center");
-        titleTextPanel.add(pageTitleLabel);
-
         pageSubtitleLabel.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
         pageSubtitleLabel.setForeground(new java.awt.Color(99, 115, 129));
         pageSubtitleLabel.setText("Modern database assistant for admin CRUD, records lookup, archive, delete, and system queries.");
@@ -99,6 +93,15 @@ public class AdminAIFrame extends javax.swing.JFrame {
         chipsPanel.setOpaque(false);
         chipsPanel.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 10, 0));
 
+        backHomeButton.setBackground(new java.awt.Color(15, 98, 146));
+        backHomeButton.setFont(new java.awt.Font("Segoe UI", 1, 12)); // NOI18N
+        backHomeButton.setForeground(new java.awt.Color(255, 255, 255));
+        backHomeButton.setText("← Back to Home");
+        backHomeButton.setBorderPainted(false);
+        backHomeButton.setFocusPainted(false);
+        backHomeButton.setPreferredSize(new java.awt.Dimension(135, 37));
+        chipsPanel.add(backHomeButton);
+
         aiReadyChipPanel.setBackground(new java.awt.Color(8, 30, 58));
         aiReadyChipPanel.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(30, 64, 100)));
         aiReadyChipPanel.setLayout(new java.awt.BorderLayout());
@@ -108,7 +111,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
         aiReadyLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
         aiReadyLabel.setText("● AI Ready");
         aiReadyLabel.setBorder(javax.swing.BorderFactory.createEmptyBorder(9, 14, 9, 14));
-        aiReadyChipPanel.add(aiReadyLabel, java.awt.BorderLayout.CENTER);
+        aiReadyChipPanel.add(aiReadyLabel);
 
         chipsPanel.add(aiReadyChipPanel);
 
@@ -121,7 +124,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
         adminModeLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
         adminModeLabel.setText("ADMIN MODE");
         adminModeLabel.setBorder(javax.swing.BorderFactory.createEmptyBorder(9, 14, 9, 14));
-        adminModeChipPanel.add(adminModeLabel, java.awt.BorderLayout.CENTER);
+        adminModeChipPanel.add(adminModeLabel);
 
         chipsPanel.add(adminModeChipPanel);
 
@@ -130,32 +133,23 @@ public class AdminAIFrame extends javax.swing.JFrame {
         appRootPanel.add(headerPanel, java.awt.BorderLayout.NORTH);
 
         shellPanel.setBackground(new java.awt.Color(6, 22, 43));
-        shellPanel.setBorder(javax.swing.BorderFactory.createCompoundBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(39, 96, 153)), javax.swing.BorderFactory.createEmptyBorder(18, 18, 18, 18)));
+        shellPanel.setBorder(javax.swing.BorderFactory.createCompoundBorder());
         shellPanel.setLayout(new java.awt.BorderLayout(0, 16));
 
         shellHeaderPanel.setOpaque(false);
         shellHeaderPanel.setLayout(new java.awt.BorderLayout(12, 0));
-
-        avatarLabel.setBackground(new java.awt.Color(238, 242, 247));
-        avatarLabel.setFont(new java.awt.Font("Segoe UI", 1, 26)); // NOI18N
-        avatarLabel.setForeground(new java.awt.Color(18, 58, 91));
-        avatarLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-        avatarLabel.setText("◉");
-        avatarLabel.setOpaque(true);
-        avatarLabel.setPreferredSize(new java.awt.Dimension(58, 58));
-        shellHeaderPanel.add(avatarLabel, java.awt.BorderLayout.WEST);
 
         assistantTextPanel.setOpaque(false);
         assistantTextPanel.setLayout(new java.awt.GridLayout(2, 1, 0, 3));
 
         assistantNameLabel.setFont(new java.awt.Font("Segoe UI", 1, 21)); // NOI18N
         assistantNameLabel.setForeground(new java.awt.Color(255, 255, 255));
-        assistantNameLabel.setText("ANA AI ASSISTANT");
+        assistantNameLabel.setText(" ANA AI ASSISTANT");
         assistantTextPanel.add(assistantNameLabel);
 
         assistantDescLabel.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         assistantDescLabel.setForeground(new java.awt.Color(154, 169, 191));
-        assistantDescLabel.setText("Ask about students, courses, schedules, grades, sections, rooms, instructors, and other database tables.");
+        assistantDescLabel.setText(" Ask about students, courses, schedules, grades, sections, rooms, instructors, and other database tables.");
         assistantTextPanel.add(assistantDescLabel);
 
         shellHeaderPanel.add(assistantTextPanel, java.awt.BorderLayout.CENTER);
@@ -189,15 +183,15 @@ public class AdminAIFrame extends javax.swing.JFrame {
         chatSurfacePanel.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(37, 65, 98)));
         chatSurfacePanel.setLayout(new java.awt.BorderLayout());
 
-        chatScrollPane.setBorder(null);
+        chatScrollPane.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 0, 0, 0));
 
         chatMessagesPanel.setBackground(new java.awt.Color(10, 18, 32));
         chatMessagesPanel.setBorder(javax.swing.BorderFactory.createEmptyBorder(14, 14, 14, 14));
         chatMessagesPanel.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
 
         previewBubblePanel.setBackground(new java.awt.Color(18, 39, 70));
-        previewBubblePanel.setBorder(javax.swing.BorderFactory.createCompoundBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(72, 135, 201)), javax.swing.BorderFactory.createEmptyBorder(14, 14, 14, 14)));
         previewBubblePanel.setPreferredSize(new java.awt.Dimension(620, 110));
+        previewBubblePanel.setBorder(javax.swing.BorderFactory.createCompoundBorder());
         previewBubblePanel.setLayout(new java.awt.GridLayout(2, 1, 0, 6));
 
         previewMessageLabel1.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
@@ -219,7 +213,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
         shellPanel.add(chatSurfacePanel, java.awt.BorderLayout.CENTER);
 
         inputShellPanel.setBackground(new java.awt.Color(17, 34, 58));
-        inputShellPanel.setBorder(javax.swing.BorderFactory.createCompoundBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(51, 85, 120)), javax.swing.BorderFactory.createEmptyBorder(10, 10, 10, 10)));
+        inputShellPanel.setBorder(javax.swing.BorderFactory.createCompoundBorder());
         inputShellPanel.setLayout(new java.awt.BorderLayout(10, 0));
 
         promptScrollPane.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(37, 99, 140)));
@@ -248,7 +242,16 @@ public class AdminAIFrame extends javax.swing.JFrame {
 
         appRootPanel.add(shellPanel, java.awt.BorderLayout.CENTER);
 
-        getContentPane().add(appRootPanel, java.awt.BorderLayout.CENTER);
+        javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
+        getContentPane().setLayout(layout);
+        layout.setHorizontalGroup(
+            layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addComponent(appRootPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+        );
+        layout.setVerticalGroup(
+            layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addComponent(appRootPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+        );
 
         pack();
         setLocationRelativeTo(null);
@@ -269,12 +272,15 @@ public class AdminAIFrame extends javax.swing.JFrame {
         promptArea.setText("");
         runButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
         runButton.addActionListener(e -> runAdminAction());
+
+        backHomeButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        backHomeButton.setBackground(accentBlue);
+        backHomeButton.setForeground(Color.WHITE);
+        backHomeButton.setFocusPainted(false);
+        backHomeButton.setBorderPainted(false);
+        backHomeButton.addActionListener(e -> dispose());
         styleChip(aiReadyChipPanel, new Color(8, 30, 58), new Color(30, 64, 100));
         styleChip(adminModeChipPanel, accentOrange, new Color(255, 193, 59));
-        avatarLabel.setBorder(new CompoundBorder(
-                BorderFactory.createLineBorder(accentCyan, 2),
-                new EmptyBorder(6, 6, 6, 6)
-        ));
     }
 
     private void styleChip(JPanel panel, Color bg, Color line) {
@@ -687,7 +693,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
     private javax.swing.JLabel assistantDescLabel;
     private javax.swing.JLabel assistantNameLabel;
     private javax.swing.JPanel assistantTextPanel;
-    private javax.swing.JLabel avatarLabel;
+    private javax.swing.JButton backHomeButton;
     private javax.swing.JPanel chatMessagesPanel;
     private javax.swing.JScrollPane chatScrollPane;
     private javax.swing.JPanel chatSurfacePanel;
@@ -699,7 +705,6 @@ public class AdminAIFrame extends javax.swing.JFrame {
     private javax.swing.JPanel hintsPanel;
     private javax.swing.JPanel inputShellPanel;
     private javax.swing.JLabel pageSubtitleLabel;
-    private javax.swing.JLabel pageTitleLabel;
     private javax.swing.JPanel previewBubblePanel;
     private javax.swing.JLabel previewMessageLabel1;
     private javax.swing.JLabel previewMessageLabel2;

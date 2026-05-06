@@ -179,7 +179,7 @@ public class AdminDashboard extends javax.swing.JFrame {
         dashboardButton.setBackground(new java.awt.Color(15, 98, 146));
         dashboardButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         dashboardButton.setForeground(new java.awt.Color(255, 255, 255));
-        dashboardButton.setText("⌂  Dashboard");
+        dashboardButton.setText("Dashboard");
         dashboardButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         dashboardButton.setBorderPainted(false);
         dashboardButton.setFocusPainted(false);
@@ -192,130 +192,130 @@ public class AdminDashboard extends javax.swing.JFrame {
         databaseTablesLabel.setFont(new java.awt.Font("Segoe UI", 1, 11)); // NOI18N
         sidebarMenuPanel.add(databaseTablesLabel);
 
-        adminsButton.setText("♛  Admins");
         adminsButton.setBackground(new java.awt.Color(18, 58, 91));
+        adminsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         adminsButton.setForeground(new java.awt.Color(255, 255, 255));
+        adminsButton.setText("Admins");
+        adminsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         adminsButton.setBorderPainted(false);
         adminsButton.setFocusPainted(false);
-        adminsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        adminsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(adminsButton);
 
-        studentsButton.setText("♟  Students");
         studentsButton.setBackground(new java.awt.Color(18, 58, 91));
+        studentsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         studentsButton.setForeground(new java.awt.Color(255, 255, 255));
+        studentsButton.setText("Students");
+        studentsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         studentsButton.setBorderPainted(false);
         studentsButton.setFocusPainted(false);
-        studentsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        studentsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(studentsButton);
 
-        coursesButton.setText("▣  Courses");
         coursesButton.setBackground(new java.awt.Color(18, 58, 91));
+        coursesButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         coursesButton.setForeground(new java.awt.Color(255, 255, 255));
+        coursesButton.setText("Courses");
+        coursesButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         coursesButton.setBorderPainted(false);
         coursesButton.setFocusPainted(false);
-        coursesButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        coursesButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(coursesButton);
 
-        curriculumButton.setText("▤  Curriculum");
         curriculumButton.setBackground(new java.awt.Color(18, 58, 91));
+        curriculumButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         curriculumButton.setForeground(new java.awt.Color(255, 255, 255));
+        curriculumButton.setText("Curriculum");
+        curriculumButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         curriculumButton.setBorderPainted(false);
         curriculumButton.setFocusPainted(false);
-        curriculumButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        curriculumButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(curriculumButton);
 
-        departmentsButton.setText("⌂  Departments");
         departmentsButton.setBackground(new java.awt.Color(18, 58, 91));
+        departmentsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         departmentsButton.setForeground(new java.awt.Color(255, 255, 255));
+        departmentsButton.setText("Departments");
+        departmentsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         departmentsButton.setBorderPainted(false);
         departmentsButton.setFocusPainted(false);
-        departmentsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        departmentsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(departmentsButton);
 
-        enrollmentsButton.setText("✓  Enrollments");
         enrollmentsButton.setBackground(new java.awt.Color(18, 58, 91));
+        enrollmentsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         enrollmentsButton.setForeground(new java.awt.Color(255, 255, 255));
+        enrollmentsButton.setText("Enrollments");
+        enrollmentsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         enrollmentsButton.setBorderPainted(false);
         enrollmentsButton.setFocusPainted(false);
-        enrollmentsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        enrollmentsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(enrollmentsButton);
 
-        gradesButton.setText("★  Grades");
         gradesButton.setBackground(new java.awt.Color(18, 58, 91));
+        gradesButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         gradesButton.setForeground(new java.awt.Color(255, 255, 255));
+        gradesButton.setText("Grades");
+        gradesButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         gradesButton.setBorderPainted(false);
         gradesButton.setFocusPainted(false);
-        gradesButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        gradesButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(gradesButton);
 
-        instructorsButton.setText("◉  Instructors");
         instructorsButton.setBackground(new java.awt.Color(18, 58, 91));
+        instructorsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         instructorsButton.setForeground(new java.awt.Color(255, 255, 255));
+        instructorsButton.setText("Instructors");
+        instructorsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         instructorsButton.setBorderPainted(false);
         instructorsButton.setFocusPainted(false);
-        instructorsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        instructorsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(instructorsButton);
 
-        roomsButton.setText("▦  Rooms");
         roomsButton.setBackground(new java.awt.Color(18, 58, 91));
+        roomsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         roomsButton.setForeground(new java.awt.Color(255, 255, 255));
+        roomsButton.setText("Rooms");
+        roomsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         roomsButton.setBorderPainted(false);
         roomsButton.setFocusPainted(false);
-        roomsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        roomsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(roomsButton);
 
-        schedulesButton.setText("◷  Schedules");
         schedulesButton.setBackground(new java.awt.Color(18, 58, 91));
+        schedulesButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         schedulesButton.setForeground(new java.awt.Color(255, 255, 255));
+        schedulesButton.setText("Schedules");
+        schedulesButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         schedulesButton.setBorderPainted(false);
         schedulesButton.setFocusPainted(false);
-        schedulesButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        schedulesButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(schedulesButton);
 
-        schoolYearsButton.setText("◫  School Years");
         schoolYearsButton.setBackground(new java.awt.Color(18, 58, 91));
+        schoolYearsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         schoolYearsButton.setForeground(new java.awt.Color(255, 255, 255));
+        schoolYearsButton.setText("School Years");
+        schoolYearsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         schoolYearsButton.setBorderPainted(false);
         schoolYearsButton.setFocusPainted(false);
-        schoolYearsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        schoolYearsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(schoolYearsButton);
 
-        sectionsButton.setText("▥  Sections");
         sectionsButton.setBackground(new java.awt.Color(18, 58, 91));
+        sectionsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         sectionsButton.setForeground(new java.awt.Color(255, 255, 255));
+        sectionsButton.setText("Sections");
+        sectionsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sectionsButton.setBorderPainted(false);
         sectionsButton.setFocusPainted(false);
-        sectionsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        sectionsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(sectionsButton);
 
-        semestersButton.setText("◌  Semesters");
         semestersButton.setBackground(new java.awt.Color(18, 58, 91));
+        semestersButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         semestersButton.setForeground(new java.awt.Color(255, 255, 255));
+        semestersButton.setText("Semesters");
+        semestersButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         semestersButton.setBorderPainted(false);
         semestersButton.setFocusPainted(false);
-        semestersButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        semestersButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(semestersButton);
 
-        subjectsButton.setText("◆  Subjects");
         subjectsButton.setBackground(new java.awt.Color(18, 58, 91));
+        subjectsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         subjectsButton.setForeground(new java.awt.Color(255, 255, 255));
+        subjectsButton.setText("Subjects");
+        subjectsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         subjectsButton.setBorderPainted(false);
         subjectsButton.setFocusPainted(false);
-        subjectsButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        subjectsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         sidebarMenuPanel.add(subjectsButton);
 
         sidebarScrollPane.setViewportView(sidebarMenuPanel);
@@ -326,31 +326,31 @@ public class AdminDashboard extends javax.swing.JFrame {
         bottomActionsPanel.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 18, 22, 18));
         bottomActionsPanel.setLayout(new java.awt.GridLayout(3, 1, 0, 8));
 
-        crudButton.setText("✎  CRUD Operations");
         crudButton.setBackground(new java.awt.Color(245, 158, 11));
+        crudButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         crudButton.setForeground(new java.awt.Color(255, 255, 255));
+        crudButton.setText("Records");
+        crudButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         crudButton.setBorderPainted(false);
         crudButton.setFocusPainted(false);
-        crudButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        crudButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         bottomActionsPanel.add(crudButton);
 
-        adminAIButton.setText("◎  Admin AI Frame");
         adminAIButton.setBackground(new java.awt.Color(15, 98, 146));
+        adminAIButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         adminAIButton.setForeground(new java.awt.Color(255, 255, 255));
+        adminAIButton.setText("AI Assistant");
+        adminAIButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         adminAIButton.setBorderPainted(false);
         adminAIButton.setFocusPainted(false);
-        adminAIButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        adminAIButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         bottomActionsPanel.add(adminAIButton);
 
-        logoutButton.setText("↩  Log Out");
         logoutButton.setBackground(new java.awt.Color(150, 50, 50));
+        logoutButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         logoutButton.setForeground(new java.awt.Color(255, 255, 255));
+        logoutButton.setText("Log Out");
+        logoutButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         logoutButton.setBorderPainted(false);
         logoutButton.setFocusPainted(false);
-        logoutButton.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
-        logoutButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         bottomActionsPanel.add(logoutButton);
 
         sidebarPanel.add(bottomActionsPanel, java.awt.BorderLayout.SOUTH);
@@ -406,7 +406,7 @@ public class AdminDashboard extends javax.swing.JFrame {
 
         studentCardPanel.setBackground(new java.awt.Color(18, 58, 91));
         studentCardPanel.setBorder(javax.swing.BorderFactory.createCompoundBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(220, 228, 237)), javax.swing.BorderFactory.createEmptyBorder(18, 18, 18, 18)));
-        studentCardPanel.setLayout(new java.awt.GridLayout(3, 1, 0, 0));
+        studentCardPanel.setLayout(new java.awt.GridLayout(3, 1));
 
         studentCardTitleLabel.setText("Students");
         studentCardTitleLabel.setForeground(new java.awt.Color(255, 255, 255));
@@ -425,7 +425,7 @@ public class AdminDashboard extends javax.swing.JFrame {
 
         coursesCardPanel.setBackground(new java.awt.Color(255, 255, 255));
         coursesCardPanel.setBorder(javax.swing.BorderFactory.createCompoundBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(220, 228, 237)), javax.swing.BorderFactory.createEmptyBorder(18, 18, 18, 18)));
-        coursesCardPanel.setLayout(new java.awt.GridLayout(3, 1, 0, 0));
+        coursesCardPanel.setLayout(new java.awt.GridLayout(3, 1));
 
         coursesCardTitleLabel.setText("Courses");
         coursesCardTitleLabel.setForeground(new java.awt.Color(33, 43, 54));
@@ -444,7 +444,7 @@ public class AdminDashboard extends javax.swing.JFrame {
 
         subjectsCardPanel.setBackground(new java.awt.Color(255, 255, 255));
         subjectsCardPanel.setBorder(javax.swing.BorderFactory.createCompoundBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(220, 228, 237)), javax.swing.BorderFactory.createEmptyBorder(18, 18, 18, 18)));
-        subjectsCardPanel.setLayout(new java.awt.GridLayout(3, 1, 0, 0));
+        subjectsCardPanel.setLayout(new java.awt.GridLayout(3, 1));
 
         subjectsCardTitleLabel.setText("Subjects");
         subjectsCardTitleLabel.setForeground(new java.awt.Color(33, 43, 54));
@@ -463,7 +463,7 @@ public class AdminDashboard extends javax.swing.JFrame {
 
         schedulesCardPanel.setBackground(new java.awt.Color(255, 255, 255));
         schedulesCardPanel.setBorder(javax.swing.BorderFactory.createCompoundBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(220, 228, 237)), javax.swing.BorderFactory.createEmptyBorder(18, 18, 18, 18)));
-        schedulesCardPanel.setLayout(new java.awt.GridLayout(3, 1, 0, 0));
+        schedulesCardPanel.setLayout(new java.awt.GridLayout(3, 1));
 
         schedulesCardTitleLabel.setText("Schedules");
         schedulesCardTitleLabel.setForeground(new java.awt.Color(33, 43, 54));
@@ -490,7 +490,7 @@ public class AdminDashboard extends javax.swing.JFrame {
         tableHeaderPanel.setLayout(new java.awt.BorderLayout(12, 12));
 
         titleBoxPanel.setOpaque(false);
-        titleBoxPanel.setLayout(new java.awt.GridLayout(2, 1, 0, 0));
+        titleBoxPanel.setLayout(new java.awt.GridLayout(2, 1));
 
         tableTitleLabel.setText("Students Records");
         tableTitleLabel.setForeground(new java.awt.Color(33, 43, 54));
