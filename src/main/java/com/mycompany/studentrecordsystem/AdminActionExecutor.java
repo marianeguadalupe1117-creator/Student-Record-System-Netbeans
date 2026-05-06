@@ -1,13 +1,12 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package com.mycompany.studentrecordsystem;
 
 import java.sql.*;
 import org.json.JSONObject;
 
 public class AdminActionExecutor {
+
+    private static final String ACTIVE_STATUS = "Active";
+    private static final String ARCHIVED_STATUS = "Archived";
 
     private static final java.util.Set<String> ALLOWED_TABLES = java.util.Set.of(
             "students",
@@ -37,10 +36,17 @@ public class AdminActionExecutor {
             return switch (intent) {
                 case "get_table_records" -> getTableRecords(data);
                 case "get_record_by_id" -> getRecordById(data);
+                case "get_active_records" -> getRecordsByStatus(data, ACTIVE_STATUS);
+                case "get_archived_records" -> getRecordsByStatus(data, ARCHIVED_STATUS);
+                case "count_records" -> countRecords(data, null);
+                case "count_active_records" -> countRecords(data, ACTIVE_STATUS);
+                case "count_archived_records" -> countRecords(data, ARCHIVED_STATUS);
                 case "create_record" -> createRecord(data);
                 case "update_record" -> updateRecord(data);
                 case "delete_record" -> deleteRecord(data);
-                
+                case "archive_record" -> archiveRecord(data);
+                case "restore_record" -> restoreRecord(data);
+
                 case "create_student" -> createStudent(data);
                 case "get_all_students" -> getAllStudents();
                 case "get_students_by_section" -> getStudentsBySection(data);
@@ -51,8 +57,10 @@ public class AdminActionExecutor {
                 case "get_regular_students" -> getRegularStudents();
                 case "get_irregular_students" -> getIrregularStudents();
                 case "archive_student" -> archiveStudent(data);
+                case "restore_student" -> restoreStudent(data);
                 case "delete_student" -> deleteStudent(data);
-                case "archive_record" -> archiveRecord(data);
+
+                case "unknown_intent" -> "I understood the message, but I do not know which CRUD operation to perform. Please include the table, action, and record id if needed.";
                 default -> "Unsupported intent: " + intent;
             };
         } catch (Exception e) {
@@ -63,6 +71,12 @@ public class AdminActionExecutor {
     private static void validateTable(String table) {
         if (table == null || !ALLOWED_TABLES.contains(table)) {
             throw new IllegalArgumentException("Invalid table.");
+        }
+    }
+
+    private static void validateColumnName(String column) {
+        if (column == null || !column.matches("[A-Za-z0-9_]+")) {
+            throw new IllegalArgumentException("Invalid column name: " + column);
         }
     }
 
@@ -84,38 +98,6 @@ public class AdminActionExecutor {
             default -> "id";
         };
     }
-    
-    private static String archiveRecord(JSONObject data) throws Exception {
-    String table = data.optString("table", "").trim();
-    int id = data.optInt("id", 0);
-
-    validateTable(table);
-
-    if (id <= 0) {
-        return "Validation failed: id is required.";
-    }
-
-    String primaryKey = getPrimaryKey(table);
-
-    try (Connection conn = DBConnection.getConnection()) {
-
-        if (!tableHasColumn(conn, table, "status")) {
-            return "Validation failed: this table cannot be archived because it has no status column.";
-        }
-
-        String sql = "UPDATE " + table + " SET status = 'Archived' WHERE " + primaryKey + " = ?";
-
-        try (PreparedStatement pst = conn.prepareStatement(sql)) {
-            pst.setInt(1, id);
-
-            int rows = pst.executeUpdate();
-
-            return rows > 0
-                    ? "Record archived successfully in " + table + "."
-                    : "Record archive failed.";
-        }
-    }
-}
 
     private static boolean tableHasColumn(Connection conn, String table, String columnName) throws SQLException {
         String sql = """
@@ -136,52 +118,25 @@ public class AdminActionExecutor {
         }
     }
 
+    private static String requireStatusColumn(Connection conn, String table) throws SQLException {
+        if (!tableHasColumn(conn, table, "status")) {
+            return "Validation failed: this table has no status column, so active/archived operations cannot be used.";
+        }
+        return null;
+    }
+
     private static String getTableRecords(JSONObject data) throws Exception {
         String table = data.optString("table", "").trim();
         validateTable(table);
-
-        StringBuilder result = new StringBuilder();
 
         try (Connection conn = DBConnection.getConnection()) {
             String sql = "SELECT * FROM " + table + " LIMIT 100";
 
             try (PreparedStatement pst = conn.prepareStatement(sql);
                  ResultSet rs = pst.executeQuery()) {
-
-                ResultSetMetaData meta = rs.getMetaData();
-                int columnCount = meta.getColumnCount();
-
-                result.append("Records from ").append(table).append(":\n");
-                result.append("COLUMNS: ");
-
-                for (int i = 1; i <= columnCount; i++) {
-                    result.append(meta.getColumnName(i));
-                    if (i < columnCount) result.append(" | ");
-                }
-
-                result.append("\n");
-
-                boolean found = false;
-
-                while (rs.next()) {
-                    found = true;
-                    result.append("ROW: ");
-
-                    for (int i = 1; i <= columnCount; i++) {
-                        result.append(rs.getString(i) == null ? "" : rs.getString(i));
-                        if (i < columnCount) result.append(" | ");
-                    }
-
-                    result.append("\n");
-                }
-
-                if (!found) {
-                    return "No records found.";
-                }
+                return formatResultSet("Records from " + table + ":", rs);
             }
         }
-
-        return result.toString();
     }
 
     private static String getRecordById(JSONObject data) throws Exception {
@@ -226,6 +181,65 @@ public class AdminActionExecutor {
         return result.toString();
     }
 
+    private static String getRecordsByStatus(JSONObject data, String status) throws Exception {
+        String table = data.optString("table", "").trim();
+        validateTable(table);
+
+        try (Connection conn = DBConnection.getConnection()) {
+            String statusError = requireStatusColumn(conn, table);
+            if (statusError != null) {
+                return statusError;
+            }
+
+            String sql = "SELECT * FROM " + table + " WHERE LOWER(status) = LOWER(?) LIMIT 100";
+
+            try (PreparedStatement pst = conn.prepareStatement(sql)) {
+                pst.setString(1, status);
+
+                try (ResultSet rs = pst.executeQuery()) {
+                    return formatResultSet(status + " records from " + table + ":", rs);
+                }
+            }
+        }
+    }
+
+    private static String countRecords(JSONObject data, String status) throws Exception {
+        String table = data.optString("table", "").trim();
+        validateTable(table);
+
+        try (Connection conn = DBConnection.getConnection()) {
+            String sql;
+
+            if (status == null) {
+                sql = "SELECT COUNT(*) AS total FROM " + table;
+
+                try (PreparedStatement pst = conn.prepareStatement(sql);
+                     ResultSet rs = pst.executeQuery()) {
+                    return rs.next()
+                            ? "Total records in " + table + ": " + rs.getInt("total")
+                            : "Count failed.";
+                }
+            }
+
+            String statusError = requireStatusColumn(conn, table);
+            if (statusError != null) {
+                return statusError;
+            }
+
+            sql = "SELECT COUNT(*) AS total FROM " + table + " WHERE LOWER(status) = LOWER(?)";
+
+            try (PreparedStatement pst = conn.prepareStatement(sql)) {
+                pst.setString(1, status);
+
+                try (ResultSet rs = pst.executeQuery()) {
+                    return rs.next()
+                            ? status + " records in " + table + ": " + rs.getInt("total")
+                            : "Count failed.";
+                }
+            }
+        }
+    }
+
     private static String createRecord(JSONObject data) throws Exception {
         String table = data.optString("table", "").trim();
         JSONObject values = data.optJSONObject("values");
@@ -240,16 +254,22 @@ public class AdminActionExecutor {
         StringBuilder placeholders = new StringBuilder();
         java.util.List<Object> params = new java.util.ArrayList<>();
 
-        for (String key : values.keySet()) {
-            columns.append(key).append(", ");
-            placeholders.append("?, ");
-            params.add(values.opt(key));
-        }
-
-        columns.setLength(columns.length() - 2);
-        placeholders.setLength(placeholders.length() - 2);
-
         try (Connection conn = DBConnection.getConnection()) {
+            for (String key : values.keySet()) {
+                validateColumnName(key);
+
+                if (!tableHasColumn(conn, table, key)) {
+                    return "Validation failed: column '" + key + "' does not exist in " + table + ".";
+                }
+
+                columns.append(key).append(", ");
+                placeholders.append("?, ");
+                params.add(values.opt(key));
+            }
+
+            columns.setLength(columns.length() - 2);
+            placeholders.setLength(placeholders.length() - 2);
+
             String sql = "INSERT INTO " + table + " (" + columns + ") VALUES (" + placeholders + ")";
 
             try (PreparedStatement pst = conn.prepareStatement(sql)) {
@@ -284,15 +304,21 @@ public class AdminActionExecutor {
         StringBuilder setClause = new StringBuilder();
         java.util.List<Object> params = new java.util.ArrayList<>();
 
-        for (String key : values.keySet()) {
-            setClause.append(key).append(" = ?, ");
-            params.add(values.opt(key));
-        }
-
-        setClause.setLength(setClause.length() - 2);
-        params.add(id);
-
         try (Connection conn = DBConnection.getConnection()) {
+            for (String key : values.keySet()) {
+                validateColumnName(key);
+
+                if (!tableHasColumn(conn, table, key)) {
+                    return "Validation failed: column '" + key + "' does not exist in " + table + ".";
+                }
+
+                setClause.append(key).append(" = ?, ");
+                params.add(values.opt(key));
+            }
+
+            setClause.setLength(setClause.length() - 2);
+            params.add(id);
+
             String sql = "UPDATE " + table + " SET " + setClause + " WHERE " + primaryKey + " = ?";
 
             try (PreparedStatement pst = conn.prepareStatement(sql)) {
@@ -334,12 +360,89 @@ public class AdminActionExecutor {
         }
     }
 
+    private static String archiveRecord(JSONObject data) throws Exception {
+        return updateRecordStatus(data, ARCHIVED_STATUS, "archived");
+    }
+
+    private static String restoreRecord(JSONObject data) throws Exception {
+        return updateRecordStatus(data, ACTIVE_STATUS, "restored");
+    }
+
+    private static String updateRecordStatus(JSONObject data, String status, String actionWord) throws Exception {
+        String table = data.optString("table", "").trim();
+        int id = data.optInt("id", 0);
+
+        validateTable(table);
+
+        if (id <= 0) {
+            return "Validation failed: id is required.";
+        }
+
+        String primaryKey = getPrimaryKey(table);
+
+        try (Connection conn = DBConnection.getConnection()) {
+            String statusError = requireStatusColumn(conn, table);
+            if (statusError != null) {
+                return statusError;
+            }
+
+            String sql = "UPDATE " + table + " SET status = ? WHERE " + primaryKey + " = ?";
+
+            try (PreparedStatement pst = conn.prepareStatement(sql)) {
+                pst.setString(1, status);
+                pst.setInt(2, id);
+
+                int rows = pst.executeUpdate();
+
+                return rows > 0
+                        ? "Record " + actionWord + " successfully in " + table + "."
+                        : "Record " + actionWord + " failed.";
+            }
+        }
+    }
+
+    private static String formatResultSet(String title, ResultSet rs) throws SQLException {
+        StringBuilder result = new StringBuilder();
+        ResultSetMetaData meta = rs.getMetaData();
+        int columnCount = meta.getColumnCount();
+
+        result.append(title).append("\n");
+        result.append("COLUMNS: ");
+
+        for (int i = 1; i <= columnCount; i++) {
+            result.append(meta.getColumnName(i));
+            if (i < columnCount) result.append(" | ");
+        }
+
+        result.append("\n");
+
+        boolean found = false;
+
+        while (rs.next()) {
+            found = true;
+            result.append("ROW: ");
+
+            for (int i = 1; i <= columnCount; i++) {
+                result.append(rs.getString(i) == null ? "" : rs.getString(i));
+                if (i < columnCount) result.append(" | ");
+            }
+
+            result.append("\n");
+        }
+
+        if (!found) {
+            return "No records found.";
+        }
+
+        return result.toString();
+    }
+
     private static String getRegularStudents() throws Exception {
-        return getStudentsByStatus("Regular", "Regular students:");
+        return getStudentsByStudentStatus("Regular", "Regular students:");
     }
 
     private static String getIrregularStudents() throws Exception {
-        return getStudentsByStatus("Irregular", "Irregular students:");
+        return getStudentsByStudentStatus("Irregular", "Irregular students:");
     }
 
     private static String getAllStudents() throws Exception {
@@ -387,7 +490,7 @@ public class AdminActionExecutor {
         return result.toString();
     }
 
-    private static String getStudentsByStatus(String studentStatus, String title) throws Exception {
+    private static String getStudentsByStudentStatus(String studentStatus, String title) throws Exception {
         StringBuilder result = new StringBuilder();
 
         try (Connection conn = DBConnection.getConnection()) {
@@ -395,8 +498,8 @@ public class AdminActionExecutor {
                 SELECT s.student_id, s.student_number, s.first_name, s.last_name, sec.section_name
                 FROM students s
                 LEFT JOIN sections sec ON sec.section_id = s.section_id
-                WHERE s.student_status = ?
-                  AND s.status = 'Active'
+                WHERE LOWER(s.student_status) = LOWER(?)
+                  AND LOWER(s.status) = LOWER('Active')
                 ORDER BY s.last_name, s.first_name
             """;
 
@@ -432,22 +535,27 @@ public class AdminActionExecutor {
     }
 
     private static String getArchivedStudents() throws Exception {
-        return getSimpleStudentList("Archived", "Archived students:", "status");
+        return getSimpleStudentList(ARCHIVED_STATUS, "Archived students:", "status");
     }
 
     private static String getActiveStudents() throws Exception {
-        return getSimpleStudentList("Active", "Active students:", "status");
+        return getSimpleStudentList(ACTIVE_STATUS, "Active students:", "status");
     }
 
     private static String getSimpleStudentList(String value, String title, String column) throws Exception {
+        validateColumnName(column);
         StringBuilder result = new StringBuilder();
 
         try (Connection conn = DBConnection.getConnection()) {
+            if (!tableHasColumn(conn, "students", column)) {
+                return "Validation failed: column '" + column + "' does not exist in students.";
+            }
+
             String sql = """
                 SELECT s.student_id, s.student_number, s.first_name, s.last_name, sec.section_name
                 FROM students s
                 LEFT JOIN sections sec ON sec.section_id = s.section_id
-                WHERE s.%s = ?
+                WHERE LOWER(s.%s) = LOWER(?)
                 ORDER BY s.last_name, s.first_name
             """.formatted(column);
 
@@ -483,7 +591,7 @@ public class AdminActionExecutor {
     }
 
     private static String getStudentById(JSONObject data) throws Exception {
-        int studentId = data.optInt("student_id", 0);
+        int studentId = data.optInt("student_id", data.optInt("id", 0));
 
         if (studentId <= 0) {
             return "Validation failed: student_id is required.";
@@ -578,8 +686,8 @@ public class AdminActionExecutor {
                 SELECT s.student_id, s.student_number, s.first_name, s.last_name, sec.section_name
                 FROM students s
                 JOIN sections sec ON sec.section_id = s.section_id
-                WHERE sec.section_name = ?
-                  AND s.status = 'Active'
+                WHERE LOWER(sec.section_name) = LOWER(?)
+                  AND LOWER(s.status) = LOWER('Active')
                 ORDER BY s.last_name, s.first_name
             """;
 
@@ -615,7 +723,7 @@ public class AdminActionExecutor {
     }
 
     private static String updateStudent(JSONObject data) throws Exception {
-        int studentId = data.optInt("student_id", 0);
+        int studentId = data.optInt("student_id", data.optInt("id", 0));
 
         if (studentId <= 0) {
             return "Validation failed: student_id is required.";
@@ -670,7 +778,7 @@ public class AdminActionExecutor {
     }
 
     private static String archiveStudent(JSONObject data) throws Exception {
-        int studentId = data.optInt("student_id", 0);
+        int studentId = data.optInt("student_id", data.optInt("id", 0));
 
         if (studentId <= 0) {
             return "Validation failed: student_id is required.";
@@ -682,11 +790,11 @@ public class AdminActionExecutor {
             }
 
             String studentInfo = getStudentDetailsText(conn, studentId);
-
-            String sql = "UPDATE students SET status = 'Archived' WHERE student_id = ?";
+            String sql = "UPDATE students SET status = ? WHERE student_id = ?";
 
             try (PreparedStatement pst = conn.prepareStatement(sql)) {
-                pst.setInt(1, studentId);
+                pst.setString(1, ARCHIVED_STATUS);
+                pst.setInt(2, studentId);
 
                 int rows = pst.executeUpdate();
 
@@ -697,8 +805,35 @@ public class AdminActionExecutor {
         }
     }
 
+    private static String restoreStudent(JSONObject data) throws Exception {
+        int studentId = data.optInt("student_id", data.optInt("id", 0));
+
+        if (studentId <= 0) {
+            return "Validation failed: student_id is required.";
+        }
+
+        try (Connection conn = DBConnection.getConnection()) {
+            if (!studentExists(conn, studentId)) {
+                return "Validation failed: student not found.";
+            }
+
+            String sql = "UPDATE students SET status = ? WHERE student_id = ?";
+
+            try (PreparedStatement pst = conn.prepareStatement(sql)) {
+                pst.setString(1, ACTIVE_STATUS);
+                pst.setInt(2, studentId);
+
+                int rows = pst.executeUpdate();
+
+                return rows > 0
+                        ? "Student restored successfully.\n\nRestored student information:\n" + getStudentDetailsText(conn, studentId)
+                        : "Student restore failed.";
+            }
+        }
+    }
+
     private static String deleteStudent(JSONObject data) throws Exception {
-        int studentId = data.optInt("student_id", 0);
+        int studentId = data.optInt("student_id", data.optInt("id", 0));
 
         if (studentId <= 0) {
             return "Validation failed: student_id is required.";
@@ -710,7 +845,6 @@ public class AdminActionExecutor {
             }
 
             String studentInfo = getStudentDetailsText(conn, studentId);
-
             String sql = "DELETE FROM students WHERE student_id = ?";
 
             try (PreparedStatement pst = conn.prepareStatement(sql)) {

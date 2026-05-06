@@ -16,6 +16,7 @@ import java.util.List;
 public class AdminAIFrame extends javax.swing.JFrame {
 
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(AdminAIFrame.class.getName());
+    private static final String BUILD_TAG = "REQUESTED_INFORMATION_ONLY_BUILD";
 
     private final Color pageBg = new Color(236, 240, 245);
     private final Color shellBg = new Color(6, 22, 43);
@@ -31,6 +32,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
 
     public AdminAIFrame() {
         initComponents();
+        System.out.println("RUNNING " + BUILD_TAG);
         setupModernAIFrame();
         addWelcomeMessage();
     }
@@ -70,7 +72,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
         runButton = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
-        setTitle("Ana Admin AI");
+        setTitle("Ana Admin AI - Requested Information Only");
         setMinimumSize(new java.awt.Dimension(960, 620));
 
         appRootPanel.setBackground(new java.awt.Color(236, 240, 245));
@@ -261,6 +263,8 @@ public class AdminAIFrame extends javax.swing.JFrame {
         setSize(1080, 730);
         setMinimumSize(new Dimension(960, 620));
         getContentPane().setBackground(pageBg);
+        setTitle("Ana Admin AI - Requested Information Only");
+        pageSubtitleLabel.setText("UPDATED: Requested Information only. No raw action/result panel will be shown.");
         chatMessagesPanel.removeAll();
         chatMessagesPanel.setLayout(new BoxLayout(chatMessagesPanel, BoxLayout.Y_AXIS));
         chatMessagesPanel.setBorder(new EmptyBorder(14, 14, 14, 14));
@@ -446,19 +450,24 @@ public class AdminAIFrame extends javax.swing.JFrame {
         if (table != null) {
             JScrollPane tableScroll = new JScrollPane(table);
             tableScroll.setBorder(createTitledBorder("Requested Information"));
-            tableScroll.setPreferredSize(new Dimension(780, 220));
+            tableScroll.setPreferredSize(new Dimension(780, 280));
             tableScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
             bubble.add(tableScroll);
-            bubble.add(Box.createVerticalStrut(10));
-        }
+        } else {
+            String messageText = cleanResultMessage(result);
 
-        JTextArea resultArea = createMessageTextArea(cleanResultMessage(result), new Color(12, 26, 45), textLight);
-        JScrollPane resultScroll = new JScrollPane(resultArea);
-        resultScroll.setBorder(createTitledBorder("Action Result"));
-        resultScroll.setPreferredSize(new Dimension(780, 120));
-        resultScroll.getViewport().setBackground(new Color(12, 26, 45));
-        resultScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
-        bubble.add(resultScroll);
+            if (messageText == null || messageText.isBlank()) {
+                messageText = "No requested information available.";
+            }
+
+            JTextArea infoArea = createMessageTextArea(messageText, new Color(12, 26, 45), textLight);
+            JScrollPane infoScroll = new JScrollPane(infoArea);
+            infoScroll.setBorder(createTitledBorder("Requested Information"));
+            infoScroll.setPreferredSize(new Dimension(780, 120));
+            infoScroll.getViewport().setBackground(new Color(12, 26, 45));
+            infoScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+            bubble.add(infoScroll);
+        }
 
         JPanel wrapper = new JPanel();
         wrapper.setLayout(new BoxLayout(wrapper, BoxLayout.X_AXIS));
@@ -512,7 +521,9 @@ public class AdminAIFrame extends javax.swing.JFrame {
             return null;
         }
 
-        if (intent.equals("get_table_records")) {
+        if (intent.equals("get_table_records")
+                || intent.equals("get_active_records")
+                || intent.equals("get_archived_records")) {
             return buildGenericTable(result);
         }
 
@@ -611,6 +622,8 @@ public class AdminAIFrame extends javax.swing.JFrame {
                 || intent.equals("create_record")
                 || intent.equals("update_record")
                 || intent.equals("archive_record")
+                || intent.equals("restore_record")
+                || intent.equals("restore_student")
                 || intent.equals("delete_record");
     }
 
@@ -621,6 +634,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
             case "create_student", "create_record" -> "Record created successfully.";
             case "update_student", "update_record" -> "Record updated successfully.";
             case "archive_student", "archive_record" -> "Record archived successfully.";
+            case "restore_student", "restore_record" -> "Record restored successfully.";
             case "delete_student", "delete_record" -> "Record deleted successfully.";
             default -> null;
         };
