@@ -16,32 +16,51 @@ public class OllamaAdminService {
     private static final String OLLAMA_MODEL = "qwen2.5-coder:7b";
 
     public static JSONObject getAdminAction(String adminPrompt) throws Exception {
-        JSONObject fixedIntent = detectIntentLocally(adminPrompt);
+        return getAdminAction(adminPrompt, null, 0);
+    }
+
+    /*
+     * Optional smarter version for commands like:
+     * "change this user status to Archived"
+     *
+     * If your UI has a selected row, call:
+     * OllamaAdminService.getAdminAction(prompt, currentTable, selectedId);
+     */
+    public static JSONObject getAdminAction(String adminPrompt, String selectedTable, int selectedId) throws Exception {
+        JSONObject fixedIntent = detectIntentLocally(adminPrompt, selectedTable, selectedId);
 
         if (fixedIntent != null) {
             return fixedIntent;
         }
 
-        return callOllama(adminPrompt);
+        return callOllama(adminPrompt, selectedTable, selectedId);
     }
 
-    private static JSONObject detectIntentLocally(String prompt) {
+    private static JSONObject detectIntentLocally(String prompt, String selectedTable, int selectedId) {
         String text = normalize(prompt);
+        String original = prompt == null ? "" : prompt.trim();
 
         String table = detectTable(text);
-        int id = extractId(text);
+        if (table == null && referencesSelectedRecord(text) && selectedTable != null && !selectedTable.isBlank()) {
+            table = selectedTable.trim();
+        }
+
+        int id = extractIdForTable(text, table);
+        if (id <= 0 && referencesSelectedRecord(text) && selectedId > 0) {
+            id = selectedId;
+        }
 
         boolean isRead = containsAny(text,
-                "show", "list", "view", "get", "find", "display", "select", "see", "open", "fetch");
+                "show", "list", "view", "get", "find", "display", "select", "see", "open", "fetch", "give me");
 
         boolean isCreate = containsAny(text,
-                "create", "add", "insert", "new", "register", "save new", "make new");
+                "create", "add", "insert", "new", "register", "save new", "make new", "encode", "record new");
 
         boolean isUpdate = containsAny(text,
-                "update", "change", "edit", "set", "modify", "rename", "correct", "revise");
+                "update", "change", "edit", "set", "modify", "rename", "correct", "revise", "make", "turn");
 
         boolean isDelete = containsAny(text,
-                "delete", "remove", "drop", "erase", "destroy");
+                "delete", "remove", "drop", "erase", "destroy", "permanently remove");
 
         boolean isArchivedRead = containsAny(text,
                 "archived", "archive list", "inactive", "deactivated", "disabled", "not active");
@@ -58,50 +77,45 @@ public class OllamaAdminService {
         boolean isCount = containsAny(text,
                 "count", "how many", "total number", "number of");
 
+        JSONObject enrollIntent = detectEnrollmentIntent(original, text);
+        if (enrollIntent != null) {
+            return enrollIntent;
+        }
+
+        JSONObject statusIntent = detectStatusUpdateIntent(original, text, table, id, isUpdate, isArchiveAction, isRestoreAction);
+        if (statusIntent != null) {
+            return statusIntent;
+        }
+
         if (table != null && isRestoreAction && id > 0) {
-            return new JSONObject()
-                    .put("intent", "restore_record")
-                    .put("data", new JSONObject()
-                            .put("table", table)
-                            .put("id", id));
+            return makeIdIntent("restore_record", table, id);
         }
 
         if (table != null && isArchivedRead && isRead && id <= 0) {
             if (table.equals("students")) {
-                return new JSONObject()
-                        .put("intent", "get_archived_students")
-                        .put("data", new JSONObject());
+                return new JSONObject().put("intent", "get_archived_students").put("data", new JSONObject());
             }
-
-            return new JSONObject()
-                    .put("intent", "get_archived_records")
-                    .put("data", new JSONObject().put("table", table));
+            return new JSONObject().put("intent", "get_archived_records").put("data", new JSONObject().put("table", table));
         }
 
         if (table != null && isActiveRead && isRead && id <= 0) {
-            return new JSONObject()
-                    .put("intent", "get_active_records")
-                    .put("data", new JSONObject().put("table", table));
+            return new JSONObject().put("intent", "get_active_records").put("data", new JSONObject().put("table", table));
         }
 
         if (table != null && isArchiveAction && id > 0 && !isArchivedRead) {
-            return new JSONObject()
-                    .put("intent", "archive_record")
-                    .put("data", new JSONObject()
-                            .put("table", table)
-                            .put("id", id));
+            return makeIdIntent("archive_record", table, id);
         }
 
         if (table != null && isDelete && id > 0) {
-            return new JSONObject()
-                    .put("intent", "delete_record")
-                    .put("data", new JSONObject()
-                            .put("table", table)
-                            .put("id", id));
+            return makeIdIntent("delete_record", table, id);
         }
 
         if (table != null && isCreate) {
-            JSONObject values = extractValues(prompt);
+            JSONObject values = extractValues(original, text, table);
+
+            if (values.length() == 0) {
+                return unknown("I understand that you want to create a record, but the needed values are missing.");
+            }
 
             return new JSONObject()
                     .put("intent", "create_record")
@@ -111,7 +125,7 @@ public class OllamaAdminService {
         }
 
         if (table != null && isUpdate && id > 0) {
-            JSONObject values = extractValues(prompt);
+            JSONObject values = extractValues(original, text, table);
 
             if (values.length() == 0) {
                 return null;
@@ -126,89 +140,301 @@ public class OllamaAdminService {
         }
 
         if (table != null && isCount && isArchivedRead) {
-            return new JSONObject()
-                    .put("intent", "count_archived_records")
-                    .put("data", new JSONObject().put("table", table));
+            return new JSONObject().put("intent", "count_archived_records").put("data", new JSONObject().put("table", table));
         }
 
         if (table != null && isCount && isActiveRead) {
-            return new JSONObject()
-                    .put("intent", "count_active_records")
-                    .put("data", new JSONObject().put("table", table));
+            return new JSONObject().put("intent", "count_active_records").put("data", new JSONObject().put("table", table));
         }
 
         if (table != null && isCount) {
-            return new JSONObject()
-                    .put("intent", "count_records")
-                    .put("data", new JSONObject().put("table", table));
+            return new JSONObject().put("intent", "count_records").put("data", new JSONObject().put("table", table));
         }
 
         if (table != null && isRead && id > 0) {
-            return new JSONObject()
-                    .put("intent", "get_record_by_id")
-                    .put("data", new JSONObject()
-                            .put("table", table)
-                            .put("id", id));
+            return makeIdIntent("get_record_by_id", table, id);
         }
 
         if (table != null && isRead) {
-            return new JSONObject()
-                    .put("intent", "get_table_records")
-                    .put("data", new JSONObject().put("table", table));
+            return new JSONObject().put("intent", "get_table_records").put("data", new JSONObject().put("table", table));
         }
 
         return null;
     }
 
-    private static String normalize(String text) {
-        if (text == null) {
-            return "";
+    private static JSONObject detectEnrollmentIntent(String original, String text) {
+        if (!containsAny(text, "enroll", "enrolled", "enrollment", "enrol")) {
+            return null;
         }
 
-        return text.toLowerCase()
-                .replaceAll("[^a-z0-9_@.\\-#:/ ]", " ")
-                .replaceAll("\\s+", " ")
-                .trim();
+        int studentId = extractLabeledId(text, "student", "learner");
+        if (studentId <= 0) {
+            return unknown("Please include the student id to enroll the student.");
+        }
+
+        JSONObject values = new JSONObject();
+        values.put("student_id", studentId);
+
+        putIfPositive(values, "course_id", extractLabeledId(text, "course", "program"));
+        putIfPositive(values, "section_id", extractLabeledId(text, "section", "block"));
+        putIfPositive(values, "subject_id", extractLabeledId(text, "subject"));
+        putIfPositive(values, "semester_id", extractLabeledId(text, "semester", "sem"));
+        putIfPositive(values, "school_year_id", extractLabeledId(text, "school year", "school_year", "sy"));
+        putIfPositive(values, "schedule_id", extractLabeledId(text, "schedule"));
+
+        String status = extractStatusValue(original, text);
+        if (!status.isEmpty()) {
+            values.put("status", status);
+        }
+
+        return new JSONObject()
+                .put("intent", "create_record")
+                .put("data", new JSONObject()
+                        .put("table", "enrollments")
+                        .put("values", values));
     }
 
-    private static boolean containsAny(String text, String... words) {
-        for (String word : words) {
-            if (text.contains(word)) {
-                return true;
+    private static JSONObject detectStatusUpdateIntent(String original, String text, String table, int id,
+                                                       boolean isUpdate, boolean isArchiveAction, boolean isRestoreAction) {
+        boolean talksAboutStatus = containsAny(text, "status", "state", "active", "inactive", "archived", "archive", "deactivate", "reactivate", "disable", "enable");
+
+        if (table == null || id <= 0 || !talksAboutStatus) {
+            return null;
+        }
+
+        if (isArchiveAction && !containsAny(text, "status to", "status as", "change status", "set status")) {
+            return makeIdIntent("archive_record", table, id);
+        }
+
+        if (isRestoreAction && !containsAny(text, "status to", "status as", "change status", "set status")) {
+            return makeIdIntent("restore_record", table, id);
+        }
+
+        if (!isUpdate && !containsAny(text, "status", "make", "turn")) {
+            return null;
+        }
+
+        String status = extractStatusValue(original, text);
+        if (status.isEmpty()) {
+            return null;
+        }
+
+        return new JSONObject()
+                .put("intent", "update_record")
+                .put("data", new JSONObject()
+                        .put("table", table)
+                        .put("id", id)
+                        .put("values", new JSONObject().put("status", status)));
+    }
+
+    private static JSONObject extractValues(String original, String normalizedText, String table) {
+        JSONObject values = new JSONObject();
+        String text = original == null ? "" : original.trim();
+
+        extractExplicitKeyValues(text, values);
+
+        String status = extractStatusValue(original, normalizedText);
+        if (!status.isEmpty()) {
+            values.put("status", status);
+        }
+
+        String email = extractEmail(text);
+        if (!email.isEmpty()) {
+            values.put("email", email);
+        }
+
+        putIfNotEmpty(values, "password", extractSingleValue(text, "password"));
+        putIfNotEmpty(values, "role", extractSingleValue(text, "role"));
+        putIfNotEmpty(values, "gender", extractSingleValue(text, "gender"));
+        putIfNotEmpty(values, "birth_date", extractSingleValue(text, "birth_date"));
+        putIfNotEmpty(values, "birth_date", extractSingleValue(text, "birthday"));
+        putIfNotEmpty(values, "address", extractSingleValue(text, "address"));
+        putIfNotEmpty(values, "contact_number", extractSingleValue(text, "contact"));
+        putIfNotEmpty(values, "student_number", extractSingleValue(text, "student_number"));
+        putIfNotEmpty(values, "student_status", extractSingleValue(text, "student_status"));
+
+        putIfPositive(values, "student_id", extractLabeledId(normalizedText, "student", "learner"));
+        putIfPositive(values, "course_id", extractLabeledId(normalizedText, "course", "program"));
+        putIfPositive(values, "section_id", extractLabeledId(normalizedText, "section", "block"));
+        putIfPositive(values, "subject_id", extractLabeledId(normalizedText, "subject"));
+        putIfPositive(values, "instructor_id", extractLabeledId(normalizedText, "instructor", "teacher", "faculty"));
+        putIfPositive(values, "room_id", extractLabeledId(normalizedText, "room", "classroom", "lab"));
+        putIfPositive(values, "semester_id", extractLabeledId(normalizedText, "semester", "sem"));
+        putIfPositive(values, "school_year_id", extractLabeledId(normalizedText, "school year", "school_year", "sy"));
+        putIfPositive(values, "schedule_id", extractLabeledId(normalizedText, "schedule"));
+        putIfPositive(values, "year_level", extractLabeledId(normalizedText, "year level", "year"));
+
+        extractNaturalName(text, normalizedText, table, values);
+        extractNaturalNumberValues(normalizedText, table, values);
+
+        if (table.equals("users")) {
+            if (!values.has("status")) values.put("status", "Active");
+            if (!values.has("role")) values.put("role", "user");
+        }
+
+        if (table.equals("admins")) {
+            if (!values.has("status")) values.put("status", "Active");
+            if (!values.has("role")) values.put("role", "admin");
+        }
+
+        return values;
+    }
+
+    private static void extractExplicitKeyValues(String text, JSONObject values) {
+        Pattern keyValuePattern = Pattern.compile(
+                "([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?:=|:|\\bto\\b|\\bas\\b)\\s*([^,;]+?)(?=\\s+(?:and\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*(?:=|:|\\bto\\b|\\bas\\b)|[,;]|$)",
+                Pattern.CASE_INSENSITIVE
+        );
+
+        Matcher matcher = keyValuePattern.matcher(text == null ? "" : text);
+
+        while (matcher.find()) {
+            String key = normalizeKey(matcher.group(1));
+            String value = cleanValue(matcher.group(2));
+
+            if (isIgnoredValueKey(key) || value.isEmpty()) {
+                continue;
+            }
+
+            values.put(key, value);
+        }
+    }
+
+    private static void extractNaturalName(String original, String normalizedText, String table, JSONObject values) {
+        String name = "";
+
+        Pattern namedPattern = Pattern.compile(
+                "(?i)\\b(?:named|called)\\s+([a-zA-ZñÑ. '\\-]+?)(?=\\s+(?:with|email|role|password|status|gender|course|section|year|as)\\b|[,;.]|$)"
+        );
+        Matcher namedMatcher = namedPattern.matcher(original == null ? "" : original);
+        if (namedMatcher.find()) {
+            name = namedMatcher.group(1).replaceAll("\\s+", " ").trim();
+        }
+
+        if (name.isEmpty()) {
+            Pattern nameToPattern = Pattern.compile("(?i)\\b(?:name|rename)\\s*(?:to|as|=|:)\\s+([^,;]+)");
+            Matcher m = nameToPattern.matcher(original == null ? "" : original);
+            if (m.find()) {
+                name = cleanValue(m.group(1));
             }
         }
-        return false;
+
+        if (name.isEmpty()) {
+            return;
+        }
+
+        switch (table) {
+            case "students" -> putPersonName(values, name);
+            case "instructors" -> putPersonName(values, name);
+            case "users", "admins" -> values.put("full_name", name);
+            case "courses" -> values.put("course_name", name);
+            case "subjects" -> values.put("subject_name", name);
+            case "rooms" -> values.put("room_name", name);
+            case "sections" -> values.put("section_name", name);
+            case "departments" -> values.put("department_name", name);
+            case "semesters" -> values.put("semester_name", name);
+            case "items" -> values.put("item_name", name);
+            default -> values.put("name", name);
+        }
     }
 
-    private static String detectTable(String text) {
-        if (containsAny(text, "school year", "school_year", "school years", "school_years", "sy")) return "school_years";
-        if (containsAny(text, "student", "students", "learner", "learners")) return "students";
-        if (containsAny(text, "course", "courses", "program", "programs")) return "courses";
-        if (containsAny(text, "curriculum", "curricula")) return "curriculum";
-        if (containsAny(text, "department", "departments", "dept")) return "departments";
-        if (containsAny(text, "enrollment", "enrollments", "enrolled")) return "enrollments";
-        if (containsAny(text, "grade", "grades", "mark", "marks")) return "grades";
-        if (containsAny(text, "instructor", "instructors", "teacher", "teachers", "faculty")) return "instructors";
-        if (containsAny(text, "room", "rooms", "classroom", "classrooms", "laboratory", "lab")) return "rooms";
-        if (containsAny(text, "schedule", "schedules", "timetable", "time table")) return "schedules";
-        if (containsAny(text, "section", "sections", "block", "blocks")) return "sections";
-        if (containsAny(text, "semester", "semesters", "sem")) return "semesters";
-        if (containsAny(text, "subject", "subjects", "course subject", "course subjects")) return "subjects";
+    private static void extractNaturalNumberValues(String normalizedText, String table, JSONObject values) {
+        String price = extractMoneyValue(normalizedText);
+        if (!price.isEmpty() && (table.equals("items") || containsAny(normalizedText, "price", "cost", "amount"))) {
+            values.put("price", price);
+        }
 
-        return null;
+        String capacity = extractNumberAfterWords(normalizedText, "capacity", "slots", "seats");
+        if (!capacity.isEmpty()) {
+            values.put("capacity", capacity);
+        }
+
+        String units = extractNumberAfterWords(normalizedText, "units", "unit");
+        if (!units.isEmpty()) {
+            values.put("units", units);
+        }
     }
 
-    private static int extractId(String text) {
+    private static String extractMoneyValue(String text) {
+        Pattern pattern = Pattern.compile(
+                "(?:price|cost|amount)?\\s*(?:to|as|=|is|for)?\\s*(?:php|p|peso|pesos|₱)?\\s*(\\d+(?:\\.\\d{1,2})?)\\s*(?:php|p|peso|pesos)?",
+                Pattern.CASE_INSENSITIVE
+        );
+        Matcher matcher = pattern.matcher(text == null ? "" : text);
+
+        String last = "";
+        while (matcher.find()) {
+            last = matcher.group(1);
+        }
+        return last == null ? "" : last.trim();
+    }
+
+    private static String extractNumberAfterWords(String text, String... words) {
+        for (String word : words) {
+            Pattern pattern = Pattern.compile("\\b" + Pattern.quote(word) + "\\s*(?:to|as|=|is|:)??\\s*(\\d+)\\b", Pattern.CASE_INSENSITIVE);
+            Matcher matcher = pattern.matcher(text == null ? "" : text);
+            if (matcher.find()) {
+                return matcher.group(1).trim();
+            }
+        }
+        return "";
+    }
+
+    private static String extractStatusValue(String original, String normalizedText) {
+        String value = extractSingleValue(original, "status");
+        if (!value.isEmpty()) {
+            return normalizeStatus(value);
+        }
+
+        Pattern statusPattern = Pattern.compile("(?i)\\b(?:make|turn|mark|set)\\s+[^,;]*?\\b(active|inactive|archived|disabled|enabled|deactivated|reactivated)\\b");
+        Matcher statusMatcher = statusPattern.matcher(original == null ? "" : original);
+        if (statusMatcher.find()) {
+            return normalizeStatus(statusMatcher.group(1));
+        }
+
+        if (containsAny(normalizedText, "archive", "archived", "inactive", "deactivate", "disabled", "not active")) {
+            return "Archived";
+        }
+
+        if (containsAny(normalizedText, "active", "activate", "reactivate", "enabled")) {
+            return "Active";
+        }
+
+        return "";
+    }
+
+    private static String normalizeStatus(String value) {
+        String v = value == null ? "" : value.toLowerCase().replaceAll("[^a-z ]", "").trim();
+        if (v.contains("archive") || v.contains("inactive") || v.contains("disable") || v.contains("deactivate") || v.contains("not active")) {
+            return "Archived";
+        }
+        if (v.contains("active") || v.contains("enable") || v.contains("reactivate")) {
+            return "Active";
+        }
+        return value == null ? "" : value.trim();
+    }
+
+    private static int extractIdForTable(String text, String table) {
+        if (table != null) {
+            String singular = tableSingular(table);
+            int labeled = extractLabeledId(text, singular, table);
+            if (labeled > 0) {
+                return labeled;
+            }
+        }
+
         Pattern explicitId = Pattern.compile("\\b(?:id|#|record|record id|no|number)\\s*#?\\s*(\\d+)\\b");
-        Matcher explicitMatcher = explicitId.matcher(text);
-
+        Matcher explicitMatcher = explicitId.matcher(text == null ? "" : text);
         if (explicitMatcher.find()) {
             return parseIntSafe(explicitMatcher.group(1));
         }
 
-        Pattern generalNumber = Pattern.compile("\\b(\\d+)\\b");
-        Matcher generalMatcher = generalNumber.matcher(text);
+        if (table != null) {
+            return 0;
+        }
 
+        Pattern generalNumber = Pattern.compile("\\b(\\d+)\\b");
+        Matcher generalMatcher = generalNumber.matcher(text == null ? "" : text);
         if (generalMatcher.find()) {
             return parseIntSafe(generalMatcher.group(1));
         }
@@ -216,43 +442,123 @@ public class OllamaAdminService {
         return 0;
     }
 
-    private static int parseIntSafe(String value) {
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            return 0;
+    private static int extractLabeledId(String text, String... labels) {
+        String safeText = text == null ? "" : text;
+
+        for (String label : labels) {
+            Pattern pattern = Pattern.compile("\\b" + Pattern.quote(label.toLowerCase()) + "s?\\s*(?:id|#|no|number)?\\s*#?\\s*(\\d+)\\b", Pattern.CASE_INSENSITIVE);
+            Matcher matcher = pattern.matcher(safeText);
+            if (matcher.find()) {
+                return parseIntSafe(matcher.group(1));
+            }
+        }
+
+        return 0;
+    }
+
+    private static String detectTable(String text) {
+        if (containsAny(text, "school year", "school_year", "school years", "school_years", "sy")) return "school_years";
+        if (containsAny(text, "student", "students", "learner", "learners")) return "students";
+        if (containsAny(text, "enroll", "enrollment", "enrollments", "enrolled")) return "enrollments";
+        if (containsAny(text, "course", "courses", "program", "programs")) return "courses";
+        if (containsAny(text, "curriculum", "curricula")) return "curriculum";
+        if (containsAny(text, "department", "departments", "dept")) return "departments";
+        if (containsAny(text, "grade", "grades", "mark", "marks")) return "grades";
+        if (containsAny(text, "instructor", "instructors", "teacher", "teachers", "faculty")) return "instructors";
+        if (containsAny(text, "room", "rooms", "classroom", "classrooms", "laboratory", "lab")) return "rooms";
+        if (containsAny(text, "schedule", "schedules", "timetable", "time table")) return "schedules";
+        if (containsAny(text, "section", "sections", "block", "blocks")) return "sections";
+        if (containsAny(text, "semester", "semesters", "sem")) return "semesters";
+        if (containsAny(text, "subject", "subjects", "course subject", "course subjects")) return "subjects";
+        if (containsAny(text, "admin account", "admin accounts", "admin")) return "admins";
+        if (containsAny(text, "user", "users", "account", "accounts")) return "users";
+        if (containsAny(text, "item", "items", "product", "products", "menu item", "menu items")) return "items";
+
+        return null;
+    }
+
+    private static JSONObject makeIdIntent(String intent, String table, int id) {
+        return new JSONObject()
+                .put("intent", intent)
+                .put("data", new JSONObject()
+                        .put("table", table)
+                        .put("id", id));
+    }
+
+    private static JSONObject unknown(String message) {
+        return new JSONObject()
+                .put("intent", "unknown_intent")
+                .put("data", new JSONObject().put("message", message));
+    }
+
+    private static void putIfPositive(JSONObject obj, String key, int value) {
+        if (value > 0) {
+            obj.put(key, value);
         }
     }
 
-    private static JSONObject extractValues(String prompt) {
-        JSONObject values = new JSONObject();
+    private static void putIfNotEmpty(JSONObject obj, String key, String value) {
+        if (value != null && !value.trim().isEmpty()) {
+            obj.put(key, value.trim());
+        }
+    }
 
-        if (prompt == null || prompt.trim().isEmpty()) {
-            return values;
+    private static void putPersonName(JSONObject values, String name) {
+        String[] parts = name.trim().replaceAll("\\s+", " ").split(" ");
+        if (parts.length == 1) {
+            values.put("first_name", parts[0]);
+            return;
         }
 
-        String text = prompt.trim();
+        values.put("first_name", parts[0]);
+        values.put("last_name", parts[parts.length - 1]);
 
-        Pattern keyValuePattern = Pattern.compile(
-                "([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?:=|:|\\bto\\b|\\bas\\b)\\s*([^,;]+?)(?=\\s+(?:and\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*(?:=|:|\\bto\\b|\\bas\\b)|[,;]|$)",
-                Pattern.CASE_INSENSITIVE
-        );
-
-        Matcher matcher = keyValuePattern.matcher(text);
-
-        while (matcher.find()) {
-            String key = matcher.group(1).trim().toLowerCase();
-            String value = matcher.group(2).trim();
-
-            if (isIgnoredValueKey(key)) {
-                continue;
+        if (parts.length > 2) {
+            StringBuilder middle = new StringBuilder();
+            for (int i = 1; i < parts.length - 1; i++) {
+                if (middle.length() > 0) middle.append(" ");
+                middle.append(parts[i]);
             }
-
-            value = value.replaceAll("(?i)\\s+and$", "").trim();
-            values.put(key, value);
+            values.put("middle_name", middle.toString());
         }
+    }
 
-        return values;
+    private static String extractEmail(String text) {
+        Pattern pattern = Pattern.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}");
+        Matcher matcher = pattern.matcher(text == null ? "" : text);
+        return matcher.find() ? matcher.group().trim() : "";
+    }
+
+    private static String extractSingleValue(String text, String key) {
+        Pattern pattern = Pattern.compile(
+                "(?i)\\b" + Pattern.quote(key) + "\\s*(?:=|:|to|as|is)?\\s*([^,;]+?)(?=\\s+(?:and\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*(?:=|:|to|as|is)|[,;]|$)"
+        );
+        Matcher matcher = pattern.matcher(text == null ? "" : text);
+        return matcher.find() ? cleanValue(matcher.group(1)) : "";
+    }
+
+    private static String cleanValue(String value) {
+        if (value == null) return "";
+        return value.replaceAll("(?i)\\b(pesos|peso|php)\\b", "")
+                .replaceAll("(?i)\\s+and$", "")
+                .replace("₱", "")
+                .trim();
+    }
+
+    private static String normalizeKey(String key) {
+        if (key == null) return "";
+        String k = key.trim().toLowerCase();
+        return switch (k) {
+            case "fullname", "full_name", "name" -> "name";
+            case "firstname" -> "first_name";
+            case "middlename" -> "middle_name";
+            case "lastname", "surname" -> "last_name";
+            case "studentnumber" -> "student_number";
+            case "contact", "phone", "phonenumber" -> "contact_number";
+            case "birthday", "birthdate" -> "birth_date";
+            case "year", "yearlevel" -> "year_level";
+            default -> k;
+        };
     }
 
     private static boolean isIgnoredValueKey(String key) {
@@ -270,96 +576,142 @@ public class OllamaAdminService {
                 || key.equals("schedule")
                 || key.equals("schedules")
                 || key.equals("section")
-                || key.equals("sections");
+                || key.equals("sections")
+                || key.equals("user")
+                || key.equals("users")
+                || key.equals("account")
+                || key.equals("accounts")
+                || key.equals("item")
+                || key.equals("items")
+                || key.equals("product")
+                || key.equals("products")
+                || key.equals("admin")
+                || key.equals("admins");
     }
 
-    private static JSONObject callOllama(String adminPrompt) throws Exception {
+    private static boolean referencesSelectedRecord(String text) {
+        return containsAny(text, "this", "selected", "current record", "current row", "that record", "this record", "this user", "this student");
+    }
+
+    private static String normalize(String text) {
+        if (text == null) {
+            return "";
+        }
+
+        return text.toLowerCase()
+                .replaceAll("[^a-z0-9_@.\\-#:/₱ ]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private static boolean containsAny(String text, String... words) {
+        String safeText = text == null ? "" : text;
+        for (String word : words) {
+            if (safeText.contains(word)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int parseIntSafe(String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private static String tableSingular(String table) {
+        if (table == null || table.isBlank()) return "";
+        if (table.equals("curriculum")) return "curriculum";
+        if (table.equals("school_years")) return "school year";
+        if (table.endsWith("ies")) return table.substring(0, table.length() - 3) + "y";
+        if (table.endsWith("s")) return table.substring(0, table.length() - 1);
+        return table;
+    }
+
+    private static JSONObject callOllama(String adminPrompt, String selectedTable, int selectedId) throws Exception {
+
+        String contextText = "";
+        if (selectedTable != null && !selectedTable.isBlank() && selectedId > 0) {
+            contextText = "\nCurrent selected record context: table=" + selectedTable + ", id=" + selectedId + ". Use this only when the user says this/selected/current record.";
+        }
 
         String systemInstruction = """
             You are an admin database CRUD intent classifier for a student record system.
 
-            Your job is to understand the user's intention first before choosing a CRUD operation.
-            Return exactly one JSON object only.
+            Your job is to understand human admin commands and translate them into exactly one JSON object.
             No markdown. No explanation. No SQL.
+
+            You are not allowed to invent tables, ids, or unknown required values.
+            When the command lacks the id or required values, return unknown_intent with a short message.
 
             Admin can access these tables only:
             students, courses, curriculum, departments, enrollments, grades,
-            instructors, rooms, schedules, school_years, sections, semesters, subjects
+            instructors, rooms, schedules, school_years, sections, semesters, subjects,
+            users, admins, items
 
             Allowed intents:
-            get_table_records,
-            get_record_by_id,
-            get_archived_students,
-            get_archived_records,
-            get_active_records,
-            count_records,
-            count_archived_records,
-            count_active_records,
-            create_record,
-            update_record,
-            delete_record,
-            archive_record,
-            restore_record,
-            unknown_intent
+            get_table_records, get_record_by_id, get_archived_students, get_archived_records,
+            get_active_records, count_records, count_archived_records, count_active_records,
+            create_record, update_record, delete_record, archive_record, restore_record, unknown_intent
 
             JSON formats:
-            - Read all records: {"intent":"get_table_records","data":{"table":"students"}}
-            - Read one record by id: {"intent":"get_record_by_id","data":{"table":"students","id":1}}
-            - Read archived students: {"intent":"get_archived_students","data":{}}
-            - Read archived records from other table: {"intent":"get_archived_records","data":{"table":"subjects"}}
-            - Read active records: {"intent":"get_active_records","data":{"table":"students"}}
-            - Count all records: {"intent":"count_records","data":{"table":"students"}}
-            - Count archived records: {"intent":"count_archived_records","data":{"table":"students"}}
-            - Count active records: {"intent":"count_active_records","data":{"table":"students"}}
-            - Create: {"intent":"create_record","data":{"table":"courses","values":{"course_name":"BSIT"}}}
-            - Update: {"intent":"update_record","data":{"table":"courses","id":1,"values":{"course_name":"BSCS"}}}
-            - Delete permanently: {"intent":"delete_record","data":{"table":"courses","id":1}}
-            - Archive or deactivate: {"intent":"archive_record","data":{"table":"subjects","id":1}}
-            - Restore or unarchive: {"intent":"restore_record","data":{"table":"subjects","id":1}}
-            - Unclear command: {"intent":"unknown_intent","data":{"message":"Please specify the table, id, and action."}}
+            Read all: {"intent":"get_table_records","data":{"table":"students"}}
+            Read one: {"intent":"get_record_by_id","data":{"table":"students","id":5}}
+            Create: {"intent":"create_record","data":{"table":"courses","values":{"course_name":"BSIT"}}}
+            Update: {"intent":"update_record","data":{"table":"courses","id":2,"values":{"course_name":"BSCS"}}}
+            Delete permanently: {"intent":"delete_record","data":{"table":"subjects","id":3}}
+            Archive/deactivate: {"intent":"archive_record","data":{"table":"students","id":3}}
+            Restore/reactivate: {"intent":"restore_record","data":{"table":"students","id":3}}
+            Unknown: {"intent":"unknown_intent","data":{"message":"Please include the table, id, and values."}}
 
-            Intent rules:
-            - Understand meaning, not exact words.
-            - show/list/view/get/display/select/see/fetch means READ.
-            - create/add/insert/new/register means CREATE.
-            - update/change/edit/set/modify/rename/correct means UPDATE.
-            - delete/remove/drop/erase means DELETE only if the user wants permanent deletion.
-            - archive/deactivate/disable/mark inactive/soft delete means ARCHIVE, not permanent delete.
-            - restore/unarchive/reactivate/recover/bring back means RESTORE.
-            - count/how many/total number means COUNT.
-            - archived students, show archived students, show all archived students, list inactive students, inactive students all mean get_archived_students.
-            - active students, show active students, current students all mean get_active_records with table students.
-            - If the user says archived/inactive without an id, they want to VIEW archived records, not archive a record.
-            - If the user says archive/deactivate with a specific id, they want to ARCHIVE that record.
-            - If the user says restore/unarchive/reactivate with a specific id, they want to RESTORE that record.
-            - Use exact table names from the allowed table list.
-            - Put changed or created column values inside data.values.
-            - Unknown values must be "" or 0.
-            - Never invent a table name.
-            - Never return SQL.
+            Intent meaning:
+            show/list/view/get/display/find/see/fetch = READ.
+            create/add/insert/register/new/encode/save new = CREATE.
+            change/update/edit/set/modify/rename/correct/revise/make/turn = UPDATE.
+            delete/remove/erase/drop/destroy/permanently remove = DELETE.
+            archive/deactivate/disable/mark inactive/soft delete = ARCHIVE, not delete.
+            restore/unarchive/reactivate/activate again/recover/bring back = RESTORE.
+            count/how many/total number/number of = COUNT.
+            enroll/enrol/enrolled student = CREATE record in enrollments table.
+
+            Column meaning:
+            status/state/active/inactive means status.
+            name/named/called means full_name for users/admins, first_name/last_name for students/instructors, and *_name for normal tables.
+            email/mail means email or user_email depending on table.
+            role/type means role or user_role.
+            price/cost/amount means price.
+            capacity/seats/slots means capacity.
+            course/program id means course_id.
+            section/block id means section_id.
+            subject id means subject_id.
+            instructor/teacher/faculty id means instructor_id.
+            room/classroom/lab id means room_id.
+            semester/sem id means semester_id.
+            school year/sy id means school_year_id.
 
             Examples:
-            - "students" -> {"intent":"get_table_records","data":{"table":"students"}}
-            - "show students" -> {"intent":"get_table_records","data":{"table":"students"}}
-            - "show all students" -> {"intent":"get_table_records","data":{"table":"students"}}
-            - "display student id 5" -> {"intent":"get_record_by_id","data":{"table":"students","id":5}}
-            - "archived students" -> {"intent":"get_archived_students","data":{}}
-            - "show all archived students" -> {"intent":"get_archived_students","data":{}}
-            - "list inactive students" -> {"intent":"get_archived_students","data":{}}
-            - "show archived subjects" -> {"intent":"get_archived_records","data":{"table":"subjects"}}
-            - "active students" -> {"intent":"get_active_records","data":{"table":"students"}}
-            - "how many students" -> {"intent":"count_records","data":{"table":"students"}}
-            - "how many archived students" -> {"intent":"count_archived_records","data":{"table":"students"}}
-            - "add course course_name BSIT" -> {"intent":"create_record","data":{"table":"courses","values":{"course_name":"BSIT"}}}
-            - "create room room_name Lab 101 capacity 40" -> {"intent":"create_record","data":{"table":"rooms","values":{"room_name":"Lab 101","capacity":"40"}}}
-            - "update room 1 room_name to Lab 101" -> {"intent":"update_record","data":{"table":"rooms","id":1,"values":{"room_name":"Lab 101"}}}
-            - "change course id 2 course_name to BSCS" -> {"intent":"update_record","data":{"table":"courses","id":2,"values":{"course_name":"BSCS"}}}
-            - "archive student 3" -> {"intent":"archive_record","data":{"table":"students","id":3}}
-            - "deactivate subject id 9" -> {"intent":"archive_record","data":{"table":"subjects","id":9}}
-            - "restore student 3" -> {"intent":"restore_record","data":{"table":"students","id":3}}
-            - "unarchive subject 9" -> {"intent":"restore_record","data":{"table":"subjects","id":9}}
-            - "delete subject 3" -> {"intent":"delete_record","data":{"table":"subjects","id":3}}
-            """;
+            "show all students" -> {"intent":"get_table_records","data":{"table":"students"}}
+            "display student id 5" -> {"intent":"get_record_by_id","data":{"table":"students","id":5}}
+            "archived students" -> {"intent":"get_archived_students","data":{}}
+            "show archived subjects" -> {"intent":"get_archived_records","data":{"table":"subjects"}}
+            "how many active students" -> {"intent":"count_active_records","data":{"table":"students"}}
+            "archive student 3" -> {"intent":"archive_record","data":{"table":"students","id":3}}
+            "deactivate subject id 9" -> {"intent":"archive_record","data":{"table":"subjects","id":9}}
+            "restore student 3" -> {"intent":"restore_record","data":{"table":"students","id":3}}
+            "delete subject 3 permanently" -> {"intent":"delete_record","data":{"table":"subjects","id":3}}
+            "change user 5 status to Archived" -> {"intent":"update_record","data":{"table":"users","id":5,"values":{"status":"Archived"}}}
+            "make this user active" with selected users id 7 -> {"intent":"update_record","data":{"table":"users","id":7,"values":{"status":"Active"}}}
+            "change the price of item 5 to 500 pesos" -> {"intent":"update_record","data":{"table":"items","id":5,"values":{"price":"500"}}}
+            "set room 4 capacity to 45" -> {"intent":"update_record","data":{"table":"rooms","id":4,"values":{"capacity":"45"}}}
+            "register a new user named Juan Dela Cruz email juan@example.com role admin" -> {"intent":"create_record","data":{"table":"users","values":{"full_name":"Juan Dela Cruz","email":"juan@example.com","role":"admin","status":"Active"}}}
+            "add course named BSIT code BSIT" -> {"intent":"create_record","data":{"table":"courses","values":{"course_name":"BSIT","code":"BSIT"}}}
+            "enroll student 5 course 2 section 3 semester 1 school year 1" -> {"intent":"create_record","data":{"table":"enrollments","values":{"student_id":5,"course_id":2,"section_id":3,"semester_id":1,"school_year_id":1}}}
+            "enroll this student" without selected student id -> {"intent":"unknown_intent","data":{"message":"Please include the student id to enroll the student."}}
+            "change this user status" without selected context and no status value -> {"intent":"unknown_intent","data":{"message":"Please include the record id and status value."}}
+            """ + contextText;
 
         JSONObject requestBody = new JSONObject();
         requestBody.put("model", OLLAMA_MODEL);

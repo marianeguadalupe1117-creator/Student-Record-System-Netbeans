@@ -149,7 +149,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
 
         assistantDescLabel.setFont(new java.awt.Font("Segoe UI", 0, 13)); // NOI18N
         assistantDescLabel.setForeground(new java.awt.Color(154, 169, 191));
-        assistantDescLabel.setText(" Ask about students, courses, schedules, grades, sections, rooms, instructors, and other database tables.");
+        assistantDescLabel.setText(" Ask about students, courses, schedules, grades, sections, rooms, instructors, and other data tables.");
         assistantTextPanel.add(assistantDescLabel);
 
         shellHeaderPanel.add(assistantTextPanel, java.awt.BorderLayout.CENTER);
@@ -236,6 +236,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
         runButton.setBorderPainted(false);
         runButton.setFocusPainted(false);
         runButton.setPreferredSize(new java.awt.Dimension(112, 48));
+        runButton.addActionListener(this::runButtonActionPerformed);
         inputShellPanel.add(runButton, java.awt.BorderLayout.EAST);
 
         shellPanel.add(inputShellPanel, java.awt.BorderLayout.SOUTH);
@@ -256,6 +257,10 @@ public class AdminAIFrame extends javax.swing.JFrame {
         pack();
         setLocationRelativeTo(null);
     }// </editor-fold>//GEN-END:initComponents
+
+    private void runButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_runButtonActionPerformed
+        
+    }//GEN-LAST:event_runButtonActionPerformed
 
     private void setupModernAIFrame() {
         setSize(1080, 730);
@@ -359,7 +364,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
 
     private void resetSendButton() {
         runButton.setEnabled(true);
-        runButton.setText("SEND  ➜");
+        runButton.setText("SEND");
         aiReadyLabel.setText("● AI Ready");
         aiReadyLabel.setForeground(accentGreen);
         refreshChat();

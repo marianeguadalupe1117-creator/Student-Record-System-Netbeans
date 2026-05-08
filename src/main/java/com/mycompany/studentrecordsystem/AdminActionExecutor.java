@@ -21,7 +21,10 @@ public class AdminActionExecutor {
             "school_years",
             "sections",
             "semesters",
-            "subjects"
+            "subjects",
+            "users",
+            "admins",
+            "items"
     );
 
     public static String execute(JSONObject actionJson) {
@@ -95,6 +98,9 @@ public class AdminActionExecutor {
             case "sections" -> "section_id";
             case "semesters" -> "semester_id";
             case "subjects" -> "subject_id";
+            case "users" -> "user_id";
+            case "admins" -> "admin_id";
+            case "items" -> "item_id";
             default -> "id";
         };
     }
@@ -118,8 +124,129 @@ public class AdminActionExecutor {
         }
     }
 
+    private static String resolveColumnName(Connection conn, String table, String requestedColumn) throws SQLException {
+        validateColumnName(requestedColumn);
+
+        if (tableHasColumn(conn, table, requestedColumn)) {
+            return requestedColumn;
+        }
+
+        String key = requestedColumn.toLowerCase().trim();
+        java.util.List<String> candidates = new java.util.ArrayList<>();
+
+        switch (key) {
+            case "name", "fullname", "full_name", "username", "user_name" -> {
+                candidates.add("full_name");
+                candidates.add(tableSingular(table) + "_name");
+                candidates.add("name");
+                candidates.add("first_name");
+            }
+            case "firstname", "first" -> candidates.add("first_name");
+            case "middlename", "middle" -> candidates.add("middle_name");
+            case "lastname", "last", "surname" -> candidates.add("last_name");
+            case "email", "mail" -> {
+                candidates.add("email");
+                candidates.add("user_email");
+                candidates.add("admin_email");
+            }
+            case "password", "pass" -> {
+                candidates.add("password");
+                candidates.add("user_password");
+                candidates.add("admin_password");
+            }
+            case "role", "type" -> {
+                candidates.add("role");
+                candidates.add("user_role");
+                candidates.add("admin_role");
+            }
+            case "status", "state", "active_status", "record_status" -> {
+                candidates.add("status");
+                candidates.add("user_status");
+                candidates.add("admin_status");
+                candidates.add("student_status");
+            }
+            case "studentstatus", "student_status", "regularity" -> candidates.add("student_status");
+            case "number", "studentnumber", "student_no", "studentnum" -> candidates.add("student_number");
+            case "contact", "phone", "phone_number", "contactnumber" -> candidates.add("contact_number");
+            case "birthdate", "birthday", "dob" -> candidates.add("birth_date");
+            case "address", "location" -> candidates.add("address");
+            case "gender", "sex" -> candidates.add("gender");
+            case "year", "yearlevel", "level" -> candidates.add("year_level");
+            case "course", "program" -> {
+                candidates.add("course_id");
+                candidates.add("course_name");
+                candidates.add("course_code");
+            }
+            case "section", "block" -> {
+                candidates.add("section_id");
+                candidates.add("section_name");
+                candidates.add("section_code");
+            }
+            case "subject" -> {
+                candidates.add("subject_id");
+                candidates.add("subject_name");
+                candidates.add("subject_code");
+            }
+            case "semester", "sem" -> {
+                candidates.add("semester_id");
+                candidates.add("semester_name");
+            }
+            case "schoolyear", "school_year", "sy" -> {
+                candidates.add("school_year_id");
+                candidates.add("school_year");
+            }
+            case "instructor", "teacher", "faculty" -> candidates.add("instructor_id");
+            case "room", "classroom", "lab", "laboratory" -> {
+                candidates.add("room_id");
+                candidates.add("room_name");
+                candidates.add("room_number");
+            }
+            case "code" -> {
+                candidates.add(tableSingular(table) + "_code");
+                candidates.add("code");
+            }
+            case "description", "desc" -> candidates.add("description");
+            case "price", "cost", "amount" -> {
+                candidates.add("price");
+                candidates.add("amount");
+                candidates.add("cost");
+            }
+            case "capacity", "slots", "seat", "seats" -> candidates.add("capacity");
+            default -> {
+                String snake = toSnakeCase(key);
+                candidates.add(snake);
+                candidates.add(tableSingular(table) + "_" + snake);
+            }
+        }
+
+        for (String candidate : candidates) {
+            if (candidate != null && tableHasColumn(conn, table, candidate)) {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static String tableSingular(String table) {
+        if (table == null || table.isBlank()) return "";
+        if (table.equals("curriculum")) return "curriculum";
+        if (table.endsWith("ies")) return table.substring(0, table.length() - 3) + "y";
+        if (table.endsWith("s")) return table.substring(0, table.length() - 1);
+        return table;
+    }
+
+    private static String toSnakeCase(String value) {
+        return value == null ? "" : value
+                .replaceAll("([a-z])([A-Z])", "$1_$2")
+                .replaceAll("[^A-Za-z0-9]+", "_")
+                .replaceAll("_+", "_")
+                .replaceAll("^_|_$", "")
+                .toLowerCase();
+    }
+
     private static String requireStatusColumn(Connection conn, String table) throws SQLException {
-        if (!tableHasColumn(conn, table, "status")) {
+        if (resolveColumnName(conn, table, "status") == null) {
             return "Validation failed: this table has no status column, so active/archived operations cannot be used.";
         }
         return null;
@@ -191,7 +318,8 @@ public class AdminActionExecutor {
                 return statusError;
             }
 
-            String sql = "SELECT * FROM " + table + " WHERE LOWER(status) = LOWER(?) LIMIT 100";
+            String statusColumn = resolveColumnName(conn, table, "status");
+            String sql = "SELECT * FROM " + table + " WHERE LOWER(`" + statusColumn + "`) = LOWER(?) LIMIT 100";
 
             try (PreparedStatement pst = conn.prepareStatement(sql)) {
                 pst.setString(1, status);
@@ -226,7 +354,8 @@ public class AdminActionExecutor {
                 return statusError;
             }
 
-            sql = "SELECT COUNT(*) AS total FROM " + table + " WHERE LOWER(status) = LOWER(?)";
+            String statusColumn = resolveColumnName(conn, table, "status");
+            sql = "SELECT COUNT(*) AS total FROM " + table + " WHERE LOWER(`" + statusColumn + "`) = LOWER(?)";
 
             try (PreparedStatement pst = conn.prepareStatement(sql)) {
                 pst.setString(1, status);
@@ -258,11 +387,12 @@ public class AdminActionExecutor {
             for (String key : values.keySet()) {
                 validateColumnName(key);
 
-                if (!tableHasColumn(conn, table, key)) {
+                String actualColumn = resolveColumnName(conn, table, key);
+                if (actualColumn == null) {
                     return "Validation failed: column '" + key + "' does not exist in " + table + ".";
                 }
 
-                columns.append(key).append(", ");
+                columns.append("`").append(actualColumn).append("`, ");
                 placeholders.append("?, ");
                 params.add(values.opt(key));
             }
@@ -308,11 +438,12 @@ public class AdminActionExecutor {
             for (String key : values.keySet()) {
                 validateColumnName(key);
 
-                if (!tableHasColumn(conn, table, key)) {
+                String actualColumn = resolveColumnName(conn, table, key);
+                if (actualColumn == null) {
                     return "Validation failed: column '" + key + "' does not exist in " + table + ".";
                 }
 
-                setClause.append(key).append(" = ?, ");
+                setClause.append("`").append(actualColumn).append("` = ?, ");
                 params.add(values.opt(key));
             }
 
@@ -386,7 +517,8 @@ public class AdminActionExecutor {
                 return statusError;
             }
 
-            String sql = "UPDATE " + table + " SET status = ? WHERE " + primaryKey + " = ?";
+            String statusColumn = resolveColumnName(conn, table, "status");
+            String sql = "UPDATE " + table + " SET `" + statusColumn + "` = ? WHERE " + primaryKey + " = ?";
 
             try (PreparedStatement pst = conn.prepareStatement(sql)) {
                 pst.setString(1, status);
