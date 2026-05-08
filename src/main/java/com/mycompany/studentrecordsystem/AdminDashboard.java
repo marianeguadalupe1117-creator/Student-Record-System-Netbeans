@@ -110,7 +110,6 @@ public class AdminDashboard extends javax.swing.JFrame {
         pageSubtitleLabel = new javax.swing.JLabel();
         rightHeaderPanel = new javax.swing.JPanel();
         connectionStatusLabel = new javax.swing.JLabel();
-        menuIconButton = new javax.swing.JButton();
         centerPanel = new javax.swing.JPanel();
         cardsPanel = new javax.swing.JPanel();
         studentCardPanel = new javax.swing.JPanel();
@@ -133,7 +132,6 @@ public class AdminDashboard extends javax.swing.JFrame {
         tableHeaderPanel = new javax.swing.JPanel();
         titleBoxPanel = new javax.swing.JPanel();
         tableTitleLabel = new javax.swing.JLabel();
-        tableHintLabel = new javax.swing.JLabel();
         actionsPanel = new javax.swing.JPanel();
         searchField = new javax.swing.JTextField();
         searchButton = new javax.swing.JButton();
@@ -385,13 +383,6 @@ public class AdminDashboard extends javax.swing.JFrame {
         connectionStatusLabel.setFont(new java.awt.Font("Segoe UI", 1, 12)); // NOI18N
         rightHeaderPanel.add(connectionStatusLabel);
 
-        menuIconButton.setText("☰");
-        menuIconButton.setForeground(new java.awt.Color(99, 115, 129));
-        menuIconButton.setBorderPainted(false);
-        menuIconButton.setFocusPainted(false);
-        menuIconButton.setContentAreaFilled(false);
-        rightHeaderPanel.add(menuIconButton);
-
         headerPanel.add(rightHeaderPanel, java.awt.BorderLayout.EAST);
 
         contentPanel.add(headerPanel, java.awt.BorderLayout.NORTH);
@@ -496,10 +487,6 @@ public class AdminDashboard extends javax.swing.JFrame {
         tableTitleLabel.setForeground(new java.awt.Color(33, 43, 54));
         tableTitleLabel.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
         titleBoxPanel.add(tableTitleLabel);
-
-        tableHintLabel.setText("Search and refresh records here. Use the CRUD Operations button on the left for Add, Update, Archive, and Delete.");
-        tableHintLabel.setForeground(new java.awt.Color(99, 115, 129));
-        titleBoxPanel.add(tableHintLabel);
 
         tableHeaderPanel.add(titleBoxPanel, java.awt.BorderLayout.WEST);
 
@@ -637,10 +624,10 @@ public class AdminDashboard extends javax.swing.JFrame {
         pageTitleLabel.setForeground(text);
         pageSubtitleLabel.setForeground(muted);
         connectionStatusLabel.setForeground(muted);
-        menuIconButton.setFocusPainted(false);
-        menuIconButton.setBorderPainted(false);
-        menuIconButton.setContentAreaFilled(false);
-        menuIconButton.setForeground(muted);
+        //menuIconButton.setFocusPainted(false);
+        //menuIconButton.setBorderPainted(false);
+        //menuIconButton.setContentAreaFilled(false);
+        //menuIconButton.setForeground(muted);
 
         styleCard(studentCardPanel, true);
         styleCard(coursesCardPanel, false);
@@ -675,7 +662,7 @@ public class AdminDashboard extends javax.swing.JFrame {
         actionsPanel.setOpaque(false);
         actionsPanel.setLayout(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         tableTitleLabel.setForeground(text);
-        tableHintLabel.setForeground(muted);
+        //tableHintLabel.setForeground(muted);
 
         searchField.setColumns(24);
         searchField.setFont(new Font("Segoe UI", Font.PLAIN, 13));
@@ -779,7 +766,7 @@ public class AdminDashboard extends javax.swing.JFrame {
         crudButton.addActionListener(e -> openCrudDialog());
         adminAIButton.addActionListener(e -> openAdminAIFrame());
         logoutButton.addActionListener(e -> logout());
-        menuIconButton.addActionListener(e -> sidebarPanel.setVisible(!sidebarPanel.isVisible()));
+        //menuIconButton.addActionListener(e -> sidebarPanel.setVisible(!sidebarPanel.isVisible()));
     }
 
     private void configureTableButton(JButton button, String table) {
@@ -1201,7 +1188,7 @@ public class AdminDashboard extends javax.swing.JFrame {
     }
 
 private void openCrudDialog() {
-        JDialog dialog = new JDialog(this, "CRUD Operations", true);
+        JDialog dialog = new JDialog(this, "RECORDS ACCESS Editor", true);
         dialog.setSize(980, 620);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout(12, 12));
@@ -1210,7 +1197,7 @@ private void openCrudDialog() {
         top.setBorder(new EmptyBorder(15, 15, 0, 15));
         top.setBackground(new Color(236, 240, 245));
 
-        JLabel title = new JLabel("CRUD Operations");
+        JLabel title = new JLabel("RECORDS ACCESS Editor");
         title.setFont(new Font("Segoe UI", Font.BOLD, 22));
         title.setForeground(new Color(33, 43, 54));
 
@@ -2293,7 +2280,6 @@ private void openCrudDialog() {
     private javax.swing.JPanel headerPanel;
     private javax.swing.JButton instructorsButton;
     private javax.swing.JButton logoutButton;
-    private javax.swing.JButton menuIconButton;
     private javax.swing.JLabel pageSubtitleLabel;
     private javax.swing.JLabel pageTitleLabel;
     private javax.swing.JPanel recordsPanel;
@@ -2325,7 +2311,6 @@ private void openCrudDialog() {
     private javax.swing.JLabel subjectsCardTitleLabel;
     private javax.swing.JLabel subjectsCardValueLabel;
     private javax.swing.JPanel tableHeaderPanel;
-    private javax.swing.JLabel tableHintLabel;
     private javax.swing.JScrollPane tableScrollPane;
     private javax.swing.JLabel tableTitleLabel;
     private javax.swing.JPanel titleBoxPanel;
