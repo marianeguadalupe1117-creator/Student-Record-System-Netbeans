@@ -16,7 +16,6 @@ import java.util.List;
 public class AdminAIFrame extends javax.swing.JFrame {
 
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(AdminAIFrame.class.getName());
-    private static final String BUILD_TAG = "REQUESTED_INFORMATION_ONLY_BUILD";
 
     private final Color pageBg = new Color(236, 240, 245);
     private final Color shellBg = new Color(6, 22, 43);
@@ -32,7 +31,6 @@ public class AdminAIFrame extends javax.swing.JFrame {
 
     public AdminAIFrame() {
         initComponents();
-        System.out.println("RUNNING " + BUILD_TAG);
         setupModernAIFrame();
         addWelcomeMessage();
     }
@@ -72,7 +70,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
         runButton = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
-        setTitle("Ana Admin AI - Requested Information Only");
+        setTitle("Ana Admin AI - Admin Users Supported");
         setMinimumSize(new java.awt.Dimension(960, 620));
 
         appRootPanel.setBackground(new java.awt.Color(236, 240, 245));
@@ -87,7 +85,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
 
         pageSubtitleLabel.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
         pageSubtitleLabel.setForeground(new java.awt.Color(99, 115, 129));
-        pageSubtitleLabel.setText("Modern database assistant for admin CRUD, records lookup, archive, delete, and system queries.");
+        pageSubtitleLabel.setText("Admin assistant AI");
         titleTextPanel.add(pageSubtitleLabel);
 
         headerPanel.add(titleTextPanel, java.awt.BorderLayout.WEST);
@@ -234,7 +232,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
         runButton.setBackground(new java.awt.Color(15, 98, 146));
         runButton.setFont(new java.awt.Font("Segoe UI", 1, 13)); // NOI18N
         runButton.setForeground(new java.awt.Color(255, 255, 255));
-        runButton.setText("SEND  ➜");
+        runButton.setText("SEND");
         runButton.setBorderPainted(false);
         runButton.setFocusPainted(false);
         runButton.setPreferredSize(new java.awt.Dimension(112, 48));
@@ -263,8 +261,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
         setSize(1080, 730);
         setMinimumSize(new Dimension(960, 620));
         getContentPane().setBackground(pageBg);
-        setTitle("Ana Admin AI - Requested Information Only");
-        pageSubtitleLabel.setText("UPDATED: Requested Information only. No raw action/result panel will be shown.");
+        pageSubtitleLabel.setText("Admin assistant AI");
         chatMessagesPanel.removeAll();
         chatMessagesPanel.setLayout(new BoxLayout(chatMessagesPanel, BoxLayout.Y_AXIS));
         chatMessagesPanel.setBorder(new EmptyBorder(14, 14, 14, 14));
@@ -523,7 +520,11 @@ public class AdminAIFrame extends javax.swing.JFrame {
 
         if (intent.equals("get_table_records")
                 || intent.equals("get_active_records")
-                || intent.equals("get_archived_records")) {
+                || intent.equals("get_archived_records")
+                || intent.equals("get_admin_users")
+                || intent.equals("get_active_admin_users")
+                || intent.equals("get_archived_admin_users")
+                || intent.equals("get_admin_user_by_id")) {
             return buildGenericTable(result);
         }
 
