@@ -538,33 +538,25 @@ public class AdminAIFrame extends javax.swing.JFrame {
         String cleaned = result.trim();
         String lower = cleaned.toLowerCase();
 
-        if (lower.startsWith("validation failed:")) {
-            return "Validation unsuccessful: " + cleaned.substring(cleaned.indexOf(":") + 1).trim();
+        if (lower.contains("validation failed")) {
+            String reason = cleaned.replaceFirst("(?i)^execution error:\s*", "").trim();
+            reason = reason.replaceFirst("(?i)^validation failed:\s*", "").trim();
+            return reason.isBlank() ? "Validation unsuccessful." : "Validation unsuccessful: " + reason;
         }
 
-        if (lower.contains("validation failed:")) {
-            return cleaned.replaceFirst("(?i)validation failed:", "Validation unsuccessful:");
-        }
-
-        if (lower.contains("not found")
-                || lower.contains("no records found")
-                || lower.contains("no active students found")
-                || lower.contains("no archived students found")
-                || lower.contains("no regular students found")
-                || lower.contains("no irregular students found")
-                || lower.contains("unsupported intent")
+        if (lower.contains("unsupported intent")
                 || lower.contains("invalid ai response")
                 || lower.contains("invalid table")) {
             return cleaned;
         }
 
-        return cleaned;
+        return result;
     }
 
     private JTable buildResultTable(String intent, String result) {
         String cleaned = cleanResultMessage(result);
 
-        if (cleaned.equals("Validation unsuccessful.") || cleaned.equals("Invalid information.")) {
+        if (cleaned.startsWith("Validation unsuccessful") || cleaned.equals("Invalid information.")) {
             return null;
         }
 
