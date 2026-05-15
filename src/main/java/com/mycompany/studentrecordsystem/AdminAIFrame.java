@@ -531,10 +531,19 @@ public class AdminAIFrame extends javax.swing.JFrame {
     }
 
     private String cleanResultMessage(String result) {
-        String lower = result.toLowerCase();
+        if (result == null || result.trim().isEmpty()) {
+            return "Invalid information.";
+        }
 
-        if (lower.contains("validation failed")) {
-            return "Validation unsuccessful.";
+        String cleaned = result.trim();
+        String lower = cleaned.toLowerCase();
+
+        if (lower.startsWith("validation failed:")) {
+            return "Validation unsuccessful: " + cleaned.substring(cleaned.indexOf(":") + 1).trim();
+        }
+
+        if (lower.contains("validation failed:")) {
+            return cleaned.replaceFirst("(?i)validation failed:", "Validation unsuccessful:");
         }
 
         if (lower.contains("not found")
@@ -546,10 +555,10 @@ public class AdminAIFrame extends javax.swing.JFrame {
                 || lower.contains("unsupported intent")
                 || lower.contains("invalid ai response")
                 || lower.contains("invalid table")) {
-            return "Invalid information.";
+            return cleaned;
         }
 
-        return result;
+        return cleaned;
     }
 
     private JTable buildResultTable(String intent, String result) {

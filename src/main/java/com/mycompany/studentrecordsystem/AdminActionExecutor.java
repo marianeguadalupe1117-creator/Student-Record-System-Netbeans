@@ -391,17 +391,16 @@ public class AdminActionExecutor {
         java.util.List<Object> params = new java.util.ArrayList<>();
 
         try (Connection conn = DBConnection.getConnection()) {
-            for (String key : values.keySet()) {
-                validateColumnName(key);
+            java.util.LinkedHashMap<String, Object> resolvedValues = resolveValuesByActualColumn(conn, table, values);
 
-                String actualColumn = resolveColumnName(conn, table, key);
-                if (actualColumn == null) {
-                    return "Validation failed: column '" + key + "' does not exist in " + table + ".";
-                }
+            if (resolvedValues.isEmpty()) {
+                return "Validation failed: no valid columns found.";
+            }
 
-                columns.append("`").append(actualColumn).append("`, ");
+            for (java.util.Map.Entry<String, Object> entry : resolvedValues.entrySet()) {
+                columns.append("`").append(entry.getKey()).append("`, ");
                 placeholders.append("?, ");
-                params.add(values.opt(key));
+                params.add(entry.getValue());
             }
 
             columns.setLength(columns.length() - 2);
@@ -442,16 +441,15 @@ public class AdminActionExecutor {
         java.util.List<Object> params = new java.util.ArrayList<>();
 
         try (Connection conn = DBConnection.getConnection()) {
-            for (String key : values.keySet()) {
-                validateColumnName(key);
+            java.util.LinkedHashMap<String, Object> resolvedValues = resolveValuesByActualColumn(conn, table, values);
 
-                String actualColumn = resolveColumnName(conn, table, key);
-                if (actualColumn == null) {
-                    return "Validation failed: column '" + key + "' does not exist in " + table + ".";
-                }
+            if (resolvedValues.isEmpty()) {
+                return "Validation failed: no valid columns found.";
+            }
 
-                setClause.append("`").append(actualColumn).append("` = ?, ");
-                params.add(values.opt(key));
+            for (java.util.Map.Entry<String, Object> entry : resolvedValues.entrySet()) {
+                setClause.append("`").append(entry.getKey()).append("` = ?, ");
+                params.add(entry.getValue());
             }
 
             setClause.setLength(setClause.length() - 2);
@@ -470,6 +468,53 @@ public class AdminActionExecutor {
                         : "Record update failed.";
             }
         }
+    }
+
+    private static java.util.LinkedHashMap<String, Object> resolveValuesByActualColumn(Connection conn, String table, JSONObject values) throws SQLException {
+        java.util.LinkedHashMap<String, Object> resolvedValues = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Integer> priorities = new java.util.HashMap<>();
+
+        for (String key : values.keySet()) {
+            validateColumnName(key);
+
+            String actualColumn = resolveColumnName(conn, table, key);
+            if (actualColumn == null) {
+                continue;
+            }
+
+            int priority = getColumnPriority(key, actualColumn);
+            int currentPriority = priorities.getOrDefault(actualColumn, -1);
+
+            if (priority >= currentPriority) {
+                resolvedValues.put(actualColumn, values.opt(key));
+                priorities.put(actualColumn, priority);
+            }
+        }
+
+        return resolvedValues;
+    }
+
+    private static int getColumnPriority(String requestedKey, String actualColumn) {
+        if (requestedKey == null || actualColumn == null) {
+            return 0;
+        }
+
+        String requested = toSnakeCase(requestedKey).toLowerCase();
+        String actual = actualColumn.toLowerCase();
+
+        if (requested.equals(actual)) {
+            return 3;
+        }
+
+        if (requested.equals("firstname") || requested.equals("middlename") || requested.equals("lastname")) {
+            return 2;
+        }
+
+        if (requested.equals("name") || requested.equals("full_name") || requested.equals("fullname")) {
+            return 1;
+        }
+
+        return 2;
     }
 
     private static String deleteRecord(JSONObject data) throws Exception {
@@ -1151,13 +1196,45 @@ public class AdminActionExecutor {
         int sectionId = data.optInt("section_id", 0);
         int yearLevel = data.optInt("year_level", 0);
 
-        if (studentNumber.isEmpty() || password.isEmpty() || firstName.isEmpty()
-                || lastName.isEmpty() || gender.isEmpty() || email.isEmpty()
-                || courseId <= 0 || sectionId <= 0 || yearLevel <= 0) {
-            return "Validation failed: missing required student fields.";
+        String courseText = data.optString("course",
+                data.optString("course_code", data.optString("course_name", ""))).trim();
+        String sectionText = data.optString("section",
+                data.optString("section_code", data.optString("section_name", ""))).trim();
+
+        if (courseId <= 0 && courseText.matches("\\d+")) {
+            courseId = Integer.parseInt(courseText);
+        }
+
+        if (sectionId <= 0 && sectionText.matches("\\d+")) {
+            sectionId = Integer.parseInt(sectionText);
         }
 
         try (Connection conn = DBConnection.getConnection()) {
+            if (courseId <= 0 && !courseText.isEmpty()) {
+                courseId = findIdByAnyTextColumn(conn, "courses", "course_id", courseText,
+                        "course_code", "course_name", "code", "name");
+
+                if (courseId <= 0) {
+                    return "Validation failed: course '" + courseText + "' was not found. Use an existing course_id or course_code.";
+                }
+            }
+
+            if (sectionId <= 0 && !sectionText.isEmpty()) {
+                sectionId = findIdByAnyTextColumn(conn, "sections", "section_id", sectionText,
+                        "section_code", "section_name", "name");
+
+                if (sectionId <= 0) {
+                    return "Validation failed: section '" + sectionText + "' was not found. Use an existing section_id or section_code.";
+                }
+            }
+
+            String missingFields = getMissingStudentFields(studentNumber, password, firstName, lastName,
+                    gender, email, courseId, sectionId, yearLevel);
+
+            if (!missingFields.isEmpty()) {
+                return "Validation failed: missing required student fields: " + missingFields + ".";
+            }
+
             if (existsByStudentNumber(conn, studentNumber)) {
                 return "Validation failed: student number already exists.";
             }
@@ -1170,7 +1247,7 @@ public class AdminActionExecutor {
                 INSERT INTO students
                 (student_number, first_name, middle_name, last_name, gender, birth_date, address,
                  contact_number, email, password, course_id, section_id, year_level, student_status, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
             try (PreparedStatement pst = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -1187,7 +1264,8 @@ public class AdminActionExecutor {
                 pst.setInt(11, courseId);
                 pst.setInt(12, sectionId);
                 pst.setInt(13, yearLevel);
-                pst.setString(14, data.optString("student_status", "Regular").trim());
+                pst.setString(14, normalizeStudentStatus(data.optString("student_status", "Regular")));
+                pst.setString(15, normalizeRecordStatus(data.optString("status", "Active")));
 
                 int rows = pst.executeUpdate();
 
@@ -1411,6 +1489,91 @@ public class AdminActionExecutor {
                         + "Record Status: " + rs.getString("status");
             }
         }
+    }
+
+    private static String getMissingStudentFields(String studentNumber, String password, String firstName,
+                                                   String lastName, String gender, String email,
+                                                   int courseId, int sectionId, int yearLevel) {
+        java.util.List<String> missing = new java.util.ArrayList<>();
+
+        if (studentNumber == null || studentNumber.isBlank()) missing.add("student_number");
+        if (password == null || password.isBlank()) missing.add("password");
+        if (firstName == null || firstName.isBlank()) missing.add("first_name");
+        if (lastName == null || lastName.isBlank()) missing.add("last_name");
+        if (gender == null || gender.isBlank()) missing.add("gender");
+        if (email == null || email.isBlank()) missing.add("email");
+        if (courseId <= 0) missing.add("course_id or course_code");
+        if (sectionId <= 0) missing.add("section_id or section_code");
+        if (yearLevel <= 0) missing.add("year_level");
+
+        return String.join(", ", missing);
+    }
+
+    private static String normalizeStudentStatus(String value) {
+        String v = value == null ? "" : value.toLowerCase().replaceAll("[^a-z]", "");
+        if (v.contains("irregular")) return "Irregular";
+        return "Regular";
+    }
+
+    private static String normalizeRecordStatus(String value) {
+        String v = value == null ? "" : value.toLowerCase().replaceAll("[^a-z]", "");
+        if (v.contains("archive") || v.contains("inactive") || v.contains("disabled") || v.contains("deactivated")) {
+            return "Archived";
+        }
+        return "Active";
+    }
+
+    private static int findIdByAnyTextColumn(Connection conn, String table, String idColumn, String value, String... textColumns) throws SQLException {
+        validateTable(table);
+        validateColumnName(idColumn);
+
+        if (value == null || value.trim().isEmpty()) {
+            return 0;
+        }
+
+        String cleanedValue = value.trim();
+
+        for (String column : textColumns) {
+            validateColumnName(column);
+
+            if (!tableHasColumn(conn, table, column)) {
+                continue;
+            }
+
+            String sql = "SELECT `" + idColumn + "` FROM " + table + " WHERE LOWER(`" + column + "`) = LOWER(?) LIMIT 1";
+
+            try (PreparedStatement pst = conn.prepareStatement(sql)) {
+                pst.setString(1, cleanedValue);
+
+                try (ResultSet rs = pst.executeQuery()) {
+                    if (rs.next()) {
+                        return rs.getInt(1);
+                    }
+                }
+            }
+        }
+
+        for (String column : textColumns) {
+            validateColumnName(column);
+
+            if (!tableHasColumn(conn, table, column)) {
+                continue;
+            }
+
+            String sql = "SELECT `" + idColumn + "` FROM " + table + " WHERE LOWER(`" + column + "`) LIKE LOWER(?) LIMIT 1";
+
+            try (PreparedStatement pst = conn.prepareStatement(sql)) {
+                pst.setString(1, "%" + cleanedValue + "%");
+
+                try (ResultSet rs = pst.executeQuery()) {
+                    if (rs.next()) {
+                        return rs.getInt(1);
+                    }
+                }
+            }
+        }
+
+        return 0;
     }
 
     private static boolean existsByStudentNumber(Connection conn, String studentNumber) throws SQLException {

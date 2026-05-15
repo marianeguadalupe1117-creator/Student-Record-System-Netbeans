@@ -12,11 +12,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-/**
- * Modern form-driven LoginFrame.
- * The visible layout is inside initComponents(), so NetBeans Design View
- * will show the same dashboard-style login design.
- */
+
 public class LoginFrame extends javax.swing.JFrame {
 
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(LoginFrame.class.getName());

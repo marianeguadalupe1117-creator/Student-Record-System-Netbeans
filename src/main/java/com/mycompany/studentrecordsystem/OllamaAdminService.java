@@ -252,6 +252,12 @@ public class OllamaAdminService {
                 return unknown("I understand that you want to create a record, but the needed values are missing.");
             }
 
+            if (table.equals("students")) {
+                return new JSONObject()
+                        .put("intent", "create_student")
+                        .put("data", values);
+            }
+
             return new JSONObject()
                     .put("intent", "create_record")
                     .put("data", new JSONObject()
@@ -398,7 +404,7 @@ public class OllamaAdminService {
         JSONObject values = new JSONObject();
         String text = original == null ? "" : original.trim();
 
-        extractExplicitKeyValues(text, values);
+        extractExplicitKeyValues(text, table, values);
 
         String status = extractStatusValue(original, normalizedText);
         if (!status.isEmpty()) {
@@ -415,6 +421,7 @@ public class OllamaAdminService {
         putIfNotEmpty(values, "gender", extractSingleValue(text, "gender"));
         putIfNotEmpty(values, "birth_date", extractSingleValue(text, "birth_date"));
         putIfNotEmpty(values, "birth_date", extractSingleValue(text, "birthday"));
+        putIfNotEmpty(values, "birth_date", extractDateValue(text));
         putIfNotEmpty(values, "address", extractSingleValue(text, "address"));
         putIfNotEmpty(values, "contact_number", extractSingleValue(text, "contact"));
         putIfNotEmpty(values, "student_number", extractSingleValue(text, "student_number"));
@@ -431,7 +438,20 @@ public class OllamaAdminService {
         putIfPositive(values, "schedule_id", extractLabeledId(normalizedText, "schedule"));
         putIfPositive(values, "year_level", extractLabeledId(normalizedText, "year level", "year"));
 
+        if (table.equals("students")) {
+            putIfNotEmpty(values, "course", extractTextAfterKeyword(text, "course", "program"));
+            putIfNotEmpty(values, "section", extractTextAfterKeyword(text, "section", "block"));
+
+            if (!values.has("student_status") && containsAny(normalizedText, "regular student", "regular learner")) {
+                values.put("student_status", "Regular");
+            }
+            if (!values.has("student_status") && containsAny(normalizedText, "irregular student", "irregular learner")) {
+                values.put("student_status", "Irregular");
+            }
+        }
+
         extractNaturalName(text, normalizedText, table, values);
+        applyTableSpecificNameValue(table, values);
         extractNaturalNumberValues(normalizedText, table, values);
 
         if (table.equals("users")) {
@@ -447,13 +467,15 @@ public class OllamaAdminService {
         return values;
     }
 
-    private static void extractExplicitKeyValues(String text, JSONObject values) {
+    private static void extractExplicitKeyValues(String text, String table, JSONObject values) {
+        String parseText = prepareTextForValueParsing(text, table);
+
         Pattern keyValuePattern = Pattern.compile(
-                "([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?:=|:|\\bto\\b|\\bas\\b)\\s*([^,;]+?)(?=\\s+(?:and\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*(?:=|:|\\bto\\b|\\bas\\b)|[,;]|$)",
+                "([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?:=|:|\\bto\\b|\\bas\\b|\\bof\\b|\\bis\\b)\\s*([^,;]+?)(?=\\s+(?:and\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*(?:=|:|\\bto\\b|\\bas\\b|\\bof\\b|\\bis\\b)|[,;]|$)",
                 Pattern.CASE_INSENSITIVE
         );
 
-        Matcher matcher = keyValuePattern.matcher(text == null ? "" : text);
+        Matcher matcher = keyValuePattern.matcher(parseText);
 
         while (matcher.find()) {
             String key = normalizeKey(matcher.group(1));
@@ -467,22 +489,199 @@ public class OllamaAdminService {
         }
     }
 
+    private static String prepareTextForValueParsing(String text, String table) {
+        String result = text == null ? "" : text.trim();
+
+        result = removeParentheticalFieldHints(result);
+        result = normalizeKnownFieldLabels(result);
+
+        String singular = tableSingular(table);
+        if (singular == null) singular = "";
+
+        if (!singular.isBlank()) {
+            result = result.replaceFirst(
+                    "(?i)^\\s*(?:create|add|insert|register|new|make new|encode|save new|update|change|edit|set|modify|rename|correct|revise)\\s+(?:a\\s+|an\\s+|new\\s+)?"
+                            + Pattern.quote(singular.replace("_", " ")) + "s?\\b\\s*",
+                    ""
+            );
+        }
+
+        if (table != null && !table.isBlank()) {
+            result = result.replaceFirst(
+                    "(?i)^\\s*(?:create|add|insert|register|new|make new|encode|save new|update|change|edit|set|modify|rename|correct|revise)\\s+(?:a\\s+|an\\s+|new\\s+)?"
+                            + Pattern.quote(table.replace("_", " ")) + "\\b\\s*",
+                    ""
+            );
+        }
+
+        result = normalizeGenericMultiWordLabels(result);
+
+        return result;
+    }
+
+    private static String normalizeKnownFieldLabels(String text) {
+        String result = text == null ? "" : text;
+
+        String[][] aliases = {
+                {"student number", "student_number"}, {"student no", "student_number"}, {"student num", "student_number"},
+                {"student id", "student_id"}, {"student status", "student_status"},
+                {"first name", "first_name"}, {"given name", "first_name"},
+                {"middle name", "middle_name"},
+                {"last name", "last_name"}, {"family name", "last_name"},
+                {"full name", "full_name"},
+                {"birth date", "birth_date"}, {"date of birth", "birth_date"}, {"birthdate", "birth_date"},
+                {"contact number", "contact_number"}, {"phone number", "contact_number"}, {"mobile number", "contact_number"},
+                {"year level", "year_level"},
+                {"course id", "course_id"}, {"course code", "course_code"}, {"course name", "course_name"},
+                {"section id", "section_id"}, {"section code", "section_code"}, {"section name", "section_name"},
+                {"subject id", "subject_id"}, {"subject code", "subject_code"}, {"subject name", "subject_name"},
+                {"subject title", "subject_name"},
+                {"instructor id", "instructor_id"}, {"teacher id", "instructor_id"}, {"faculty id", "instructor_id"},
+                {"employee id", "employee_id"}, {"employee number", "employee_number"}, {"employee no", "employee_number"},
+                {"room id", "room_id"}, {"room name", "room_name"}, {"room number", "room_number"},
+                {"room no", "room_number"}, {"room type", "room_type"}, {"room category", "room_category"},
+                {"semester id", "semester_id"}, {"semester name", "semester_name"},
+                {"school year id", "school_year_id"}, {"school year", "school_year"},
+                {"schedule id", "schedule_id"}, {"day of week", "day_of_week"}, {"start time", "start_time"}, {"end time", "end_time"},
+                {"curriculum id", "curriculum_id"}, {"department id", "department_id"}, {"department name", "department_name"},
+                {"enrollment id", "enrollment_id"}, {"grade id", "grade_id"}, {"final grade", "final_grade"},
+                {"user id", "user_id"}, {"user name", "user_name"}, {"user email", "user_email"}, {"user password", "user_password"}, {"user role", "user_role"}, {"user status", "user_status"},
+                {"admin id", "admin_id"}, {"admin name", "admin_name"}, {"admin email", "admin_email"}, {"admin password", "admin_password"}, {"admin role", "admin_role"}, {"admin status", "admin_status"},
+                {"item id", "item_id"}, {"item name", "item_name"}, {"product id", "item_id"}, {"product name", "item_name"},
+                {"lecture hours", "lecture_hours"}, {"lab hours", "lab_hours"}, {"laboratory hours", "lab_hours"},
+                {"lecture room type required", "lecture_room_type_required"},
+                {"laboratory room type required", "laboratory_room_type_required"},
+                {"lab room type required", "laboratory_room_type_required"},
+                {"lecture room category required", "lecture_room_category_required"},
+                {"laboratory room category required", "laboratory_room_category_required"},
+                {"lab room category required", "laboratory_room_category_required"}
+        };
+
+        for (String[] alias : aliases) {
+            result = replaceLabel(result, alias[0], alias[1]);
+        }
+
+        return result;
+    }
+
+    private static String normalizeGenericMultiWordLabels(String text) {
+        if (text == null || text.isBlank()) return "";
+
+        Pattern pattern = Pattern.compile(
+                "(?i)\\b([a-z][a-z0-9]*(?:\\s+[a-z][a-z0-9]*){1,4})\\s*(=|:|\\bto\\b|\\bas\\b|\\bof\\b|\\bis\\b)\\s*"
+        );
+
+        Matcher matcher = pattern.matcher(text);
+        StringBuffer sb = new StringBuffer();
+
+        while (matcher.find()) {
+            String label = matcher.group(1).trim();
+            String connector = matcher.group(2);
+            String snake = label.toLowerCase()
+                    .replaceAll("[^a-z0-9]+", "_")
+                    .replaceAll("_+", "_")
+                    .replaceAll("^_|_$", "");
+
+            if (snake.matches("(?i)(create|add|insert|register|update|change|edit|set|make|new|student|students|course|courses|room|rooms|subject|subjects|user|users|admin|admins)")) {
+                matcher.appendReplacement(sb, Matcher.quoteReplacement(matcher.group()));
+            } else {
+                matcher.appendReplacement(sb, Matcher.quoteReplacement(snake + " " + connector + " "));
+            }
+        }
+
+        matcher.appendTail(sb);
+        return sb.toString();
+    }
+
+    private static String replaceLabel(String text, String label, String replacement) {
+        String[] words = label.trim().split("\\s+");
+        StringBuilder regex = new StringBuilder("(?i)\\b");
+
+        for (int i = 0; i < words.length; i++) {
+            if (i > 0) {
+                regex.append("\\s+");
+            }
+            regex.append(Pattern.quote(words[i]));
+        }
+
+        regex.append("(?:\\.)?(?=\\W|$)");
+        return text.replaceAll(regex.toString(), replacement);
+    }
+
+    private static String removeParentheticalFieldHints(String text) {
+        if (text == null) return "";
+        return text.replaceAll("(?i)\\((?=[^)]*(?:first|middle|last|name|column|field|id|status|number|date|email|password|role|code))[^)]*\\)", "");
+    }
+
+    private static void applyTableSpecificNameValue(String table, JSONObject values) {
+        if (values == null || !values.has("name")) {
+            return;
+        }
+
+        String name = cleanValue(values.optString("name", ""));
+        if (name.isEmpty()) {
+            values.remove("name");
+            return;
+        }
+
+        switch (table) {
+            case "students", "instructors" -> {
+                putPersonName(values, name);
+                values.remove("name");
+            }
+            case "users", "admins" -> {
+                values.put("full_name", name);
+                values.remove("name");
+            }
+            case "courses" -> {
+                values.put("course_name", name);
+                values.remove("name");
+            }
+            case "subjects" -> {
+                values.put("subject_name", name);
+                values.remove("name");
+            }
+            case "rooms" -> {
+                values.put("room_name", name);
+                values.remove("name");
+            }
+            case "sections" -> {
+                values.put("section_name", name);
+                values.remove("name");
+            }
+            case "departments" -> {
+                values.put("department_name", name);
+                values.remove("name");
+            }
+            case "semesters" -> {
+                values.put("semester_name", name);
+                values.remove("name");
+            }
+            case "items" -> {
+                values.put("item_name", name);
+                values.remove("name");
+            }
+        }
+    }
+
     private static void extractNaturalName(String original, String normalizedText, String table, JSONObject values) {
         String name = "";
+
+        String cleanedOriginal = removeParentheticalFieldHints(original == null ? "" : original);
 
         Pattern namedPattern = Pattern.compile(
                 "(?i)\\b(?:named|called)\\s+([a-zA-ZñÑ. '\\-]+?)(?=\\s+(?:with|email|role|password|status|gender|course|section|year|as)\\b|[,;.]|$)"
         );
-        Matcher namedMatcher = namedPattern.matcher(original == null ? "" : original);
+        Matcher namedMatcher = namedPattern.matcher(cleanedOriginal);
         if (namedMatcher.find()) {
             name = namedMatcher.group(1).replaceAll("\\s+", " ").trim();
         }
 
         if (name.isEmpty()) {
-            Pattern nameToPattern = Pattern.compile("(?i)\\b(?:name|rename)\\s*(?:to|as|=|:)\\s+([^,;]+)");
-            Matcher m = nameToPattern.matcher(original == null ? "" : original);
+            Pattern nameToPattern = Pattern.compile("(?i)\\b(?:name|rename)\\s*(?:to|as|of|is|=|:)\\s+([^,;]+)");
+            Matcher m = nameToPattern.matcher(cleanedOriginal);
             if (m.find()) {
-                name = cleanValue(m.group(1));
+                name = cleanValue(removeParentheticalFieldHints(m.group(1)));
             }
         }
 
@@ -520,6 +719,68 @@ public class OllamaAdminService {
         if (!units.isEmpty()) {
             values.put("units", units);
         }
+    }
+
+    private static String extractDateValue(String text) {
+        String safeText = normalizeKnownFieldLabels(text == null ? "" : text);
+
+        Pattern pattern = Pattern.compile(
+                "(?i)\\b(?:birth_date|birthday|date_of_birth)\\s*(?:=|:|to|as|of|is)?\\s+"
+                        + "([a-zA-Z]+\\s+\\d{1,2},?\\s+\\d{4}|\\d{4}[-/]\\d{1,2}[-/]\\d{1,2}|\\d{1,2}[-/]\\d{1,2}[-/]\\d{4})"
+        );
+
+        Matcher matcher = pattern.matcher(safeText);
+        if (!matcher.find()) {
+            return "";
+        }
+
+        return normalizeDateString(matcher.group(1));
+    }
+
+    private static String normalizeDateString(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return "";
+        }
+
+        String v = value.trim().replaceAll("\\s+", " ");
+
+        String[] patterns = {
+                "MMMM d, yyyy", "MMMM d yyyy", "MMM d, yyyy", "MMM d yyyy",
+                "yyyy-M-d", "yyyy/M/d", "M/d/yyyy", "M-d-yyyy"
+        };
+
+        for (String pattern : patterns) {
+            try {
+                java.time.format.DateTimeFormatter formatter = new java.time.format.DateTimeFormatterBuilder()
+                        .parseCaseInsensitive()
+                        .appendPattern(pattern)
+                        .toFormatter(java.util.Locale.ENGLISH);
+                return java.time.LocalDate.parse(v, formatter).toString();
+            } catch (Exception ignored) {
+            }
+        }
+
+        return v;
+    }
+
+    private static String extractTextAfterKeyword(String text, String... keywords) {
+        String safeText = text == null ? "" : text;
+
+        for (String keyword : keywords) {
+            Pattern pattern = Pattern.compile(
+                    "(?i)\\b" + Pattern.quote(keyword) + "\\s*(?:=|:|to|as|of|is)?\\s+"
+                            + "([a-zA-Z0-9_.\\- ]+?)(?=\\s+(?:section|block|year|year level|regular|irregular|status|gender|birth|birthdate|address|contact|email|password|first name|middle name|last name|name)\\b|[,;]|$)"
+            );
+            Matcher matcher = pattern.matcher(safeText);
+            if (matcher.find()) {
+                String value = cleanValue(matcher.group(1));
+                if (!value.matches("\\d+")) {
+                    return value;
+                }
+            }
+        }
+
+        return "";
     }
 
     private static String extractMoneyValue(String text) {
@@ -698,7 +959,7 @@ public class OllamaAdminService {
 
     private static String extractSingleValue(String text, String key) {
         Pattern pattern = Pattern.compile(
-                "(?i)\\b" + Pattern.quote(key) + "\\s*(?:=|:|to|as|is)?\\s*([^,;]+?)(?=\\s+(?:and\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*(?:=|:|to|as|is)|[,;]|$)"
+                "(?i)\\b" + Pattern.quote(key) + "\\s*(?:=|:|to|as|of|is)?\\s*([^,;]+?)(?=\\s+(?:and\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*(?:=|:|to|as|of|is)|[,;]|$)"
         );
         Matcher matcher = pattern.matcher(text == null ? "" : text);
         return matcher.find() ? cleanValue(matcher.group(1)) : "";
@@ -706,15 +967,21 @@ public class OllamaAdminService {
 
     private static String cleanValue(String value) {
         if (value == null) return "";
-        return value.replaceAll("(?i)\\b(pesos|peso|php)\\b", "")
+        return removeParentheticalFieldHints(value)
+                .replaceAll("(?i)^\\s*(?:to|as|of|is|=|:)\\s+", "")
+                .replaceAll("(?i)\\b(pesos|peso|php)\\b", "")
                 .replaceAll("(?i)\\s+and$", "")
+                .replaceAll("[.]+$", "")
                 .replace("₱", "")
                 .trim();
     }
 
     private static String normalizeKey(String key) {
         if (key == null) return "";
-        String k = key.trim().toLowerCase();
+        String k = key.trim().toLowerCase()
+                .replaceAll("[^a-z0-9]+", "_")
+                .replaceAll("_+", "_")
+                .replaceAll("^_|_$", "");
         return switch (k) {
             case "fullname", "full_name", "name" -> "name";
             case "firstname" -> "first_name";
