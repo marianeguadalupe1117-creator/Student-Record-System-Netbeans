@@ -17,16 +17,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 
-/**
- * NetBeans JFrame Form-driven dashboard.
- *
- * IMPORTANT:
- * - The visible dashboard is now built inside initComponents(), so changes in
- *   NetBeans Design View can reflect when you run the frame.
- * - Do not call getContentPane().removeAll() for this dashboard.
- * - Custom code below initComponents() only styles components, loads SQL data,
- *   and connects button actions.
- */
 public class AdminDashboard extends javax.swing.JFrame {
 
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(AdminDashboard.class.getName());
@@ -1068,11 +1058,6 @@ public class AdminDashboard extends javax.swing.JFrame {
     }
 
     private void deleteSelectedRecord(String table) {
-        /*
-         * Soft delete:
-         * The Delete button now archives the selected row by updating status = 'Archived'.
-         * It does not permanently DELETE the database row.
-         */
         if (!isAllowedTable(table)) return;
 
         int selected = dataTable.getSelectedRow();
@@ -1646,10 +1631,6 @@ private void openCrudDialog() {
     }
 
     private void deleteRecordByPrimaryValue(String table, Object primaryValue) {
-        /*
-         * Soft delete from the Records dialog.
-         * Delete archives by updating status = 'Archived' instead of permanently deleting.
-         */
         if (!isAllowedTable(table)) return;
 
         if (!tableHasArchiveSupport(table)) {
@@ -2054,9 +2035,6 @@ private void openCrudDialog() {
     public static void main(String args[]) {
         /* Set the Nimbus look and feel */
         //<editor-fold defaultstate="collapsed" desc=" Look and feel setting code (optional) ">
-        /* If Nimbus (introduced in Java SE 6) is not available, stay with the default look and feel.
-         * For details see http://download.oracle.com/javase/tutorial/uiswing/lookandfeel/plaf.html
-         */
         try {
             for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
                 if ("Nimbus".equals(info.getName())) {
@@ -2069,7 +2047,6 @@ private void openCrudDialog() {
         }
         //</editor-fold>
 
-        /* Create and display the form */
         java.awt.EventQueue.invokeLater(() -> new AdminDashboard().setVisible(true));
     }
 

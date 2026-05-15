@@ -41,12 +41,7 @@ public class OllamaAdminService {
     }
 
     public static JSONObject getAdminAction(String adminPrompt, String selectedTable, int selectedId, Consumer<String> progressCallback) throws Exception {
-        /*
-         * Hybrid flow:
-         * 1. Local intent runs first so commands like "delete Ana Esteban" can use the currently opened table.
-         * 2. If local intent cannot solve it, direct SQL is allowed as a fallback.
-         * 3. All delete/remove actions are treated as soft delete/archive, not permanent DELETE.
-         */
+
         notifyProgress(progressCallback, "Ana is analyzing your request...");
 
         JSONObject localIntent = detectIntentLocally(adminPrompt, selectedTable, selectedId);
@@ -157,10 +152,7 @@ public class OllamaAdminService {
 
         String table = detectTable(text);
         if (table == null && selectedTable != null && !selectedTable.isBlank()) {
-            /*
-             * Use the currently opened dashboard table when the user gives a natural command
-             * without saying the table name, for example: "delete Ana Esteban".
-             */
+
             table = selectedTable.trim();
         }
 

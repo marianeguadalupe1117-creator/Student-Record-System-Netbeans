@@ -473,11 +473,6 @@ public class AdminActionExecutor {
     }
 
     private static String deleteRecord(JSONObject data) throws Exception {
-        /*
-         * Soft delete:
-         * Admin commands that say "delete/remove" should not permanently remove records.
-         * They are archived by changing the status column to Archived.
-         */
         return updateRecordStatus(data, ARCHIVED_STATUS, "archived");
     }
 
@@ -792,11 +787,6 @@ public class AdminActionExecutor {
                 }
             }
 
-            /*
-             * Safety rule:
-             * Even if the AI returns DELETE SQL, this system treats delete/remove as soft delete.
-             * The DELETE is converted to UPDATE status = 'Archived' when the table supports status.
-             */
             if ("delete".equals(firstWord)) {
                 return archiveDeleteSql(conn, cleanedSql);
             }
@@ -1380,10 +1370,6 @@ public class AdminActionExecutor {
     }
 
     private static String deleteStudent(JSONObject data) throws Exception {
-        /*
-         * Soft delete for students:
-         * Delete commands archive the student instead of permanently deleting the row.
-         */
         return archiveStudent(data);
     }
 
