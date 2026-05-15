@@ -5,8 +5,13 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.function.Consumer;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -15,25 +20,135 @@ public class OllamaAdminService {
     private static final String OLLAMA_URL = "http://localhost:11434/api/chat";
     private static final String OLLAMA_MODEL = "qwen2.5-coder:7b";
 
+    private static final String[] ALLOWED_TABLE_NAMES = {
+            "students", "courses", "curriculum", "departments", "enrollments", "grades",
+            "instructors", "rooms", "schedules", "school_years", "sections", "semesters",
+            "subjects", "users", "admins", "items"
+    };
+
+    private static final Set<String> ALLOWED_TABLES = Set.of(ALLOWED_TABLE_NAMES);
+
     public static JSONObject getAdminAction(String adminPrompt) throws Exception {
-        return getAdminAction(adminPrompt, null, 0);
+        return getAdminAction(adminPrompt, null, 0, null);
     }
 
-    /*
-     * Optional smarter version for commands like:
-     * "change this user status to Archived"
-     *
-     * If your UI has a selected row, call:
-     * OllamaAdminService.getAdminAction(prompt, currentTable, selectedId);
-     */
-    public static JSONObject getAdminAction(String adminPrompt, String selectedTable, int selectedId) throws Exception {
-        JSONObject fixedIntent = detectIntentLocally(adminPrompt, selectedTable, selectedId);
+    public static JSONObject getAdminAction(String adminPrompt, Consumer<String> progressCallback) throws Exception {
+        return getAdminAction(adminPrompt, null, 0, progressCallback);
+    }
 
-        if (fixedIntent != null) {
-            return fixedIntent;
+    public static JSONObject getAdminAction(String adminPrompt, String selectedTable, int selectedId) throws Exception {
+        return getAdminAction(adminPrompt, selectedTable, selectedId, null);
+    }
+
+    public static JSONObject getAdminAction(String adminPrompt, String selectedTable, int selectedId, Consumer<String> progressCallback) throws Exception {
+        /*
+         * Hybrid flow:
+         * 1. Local intent runs first so commands like "delete Ana Esteban" can use the currently opened table.
+         * 2. If local intent cannot solve it, direct SQL is allowed as a fallback.
+         * 3. All delete/remove actions are treated as soft delete/archive, not permanent DELETE.
+         */
+        notifyProgress(progressCallback, "Ana is analyzing your request...");
+
+        JSONObject localIntent = detectIntentLocally(adminPrompt, selectedTable, selectedId);
+        if (isUsableIntentAction(localIntent)) {
+            localIntent.put("analysis_layer", "intent");
+            return localIntent;
         }
 
-        return callOllama(adminPrompt, selectedTable, selectedId);
+        notifyProgress(progressCallback, "Ana is checking the database operation...");
+
+        JSONObject directSqlAction = tryDirectSql(adminPrompt, selectedTable, selectedId);
+        if (isUsableDirectSqlAction(directSqlAction)) {
+            directSqlAction.put("analysis_layer", "direct_ai");
+            return directSqlAction;
+        }
+
+        JSONObject aiIntent = tryOllamaIntent(adminPrompt, selectedTable, selectedId);
+        if (isUsableIntentAction(aiIntent)) {
+            aiIntent.put("analysis_layer", "intent");
+            return aiIntent;
+        }
+
+        if (isUnknownIntent(localIntent)) {
+            localIntent.put("analysis_layer", "intent");
+            return localIntent;
+        }
+
+        if (isUnknownIntent(aiIntent)) {
+            aiIntent.put("analysis_layer", "intent");
+            return aiIntent;
+        }
+
+        if (isUnknownIntent(directSqlAction)) {
+            directSqlAction.put("analysis_layer", "direct_ai");
+            return directSqlAction;
+        }
+
+        return unknown("Invalid information.").put("analysis_layer", "intent");
+    }
+
+    private static void notifyProgress(Consumer<String> progressCallback, String message) {
+        if (progressCallback != null) {
+            progressCallback.accept(message);
+        }
+    }
+
+    private static JSONObject tryDirectSql(String adminPrompt, String selectedTable, int selectedId) {
+        try {
+            return callOllamaDirectSql(adminPrompt, selectedTable, selectedId);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static JSONObject tryOllamaIntent(String adminPrompt, String selectedTable, int selectedId) {
+        try {
+            return callOllama(adminPrompt, selectedTable, selectedId);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static boolean isUsableIntentAction(JSONObject action) {
+        if (action == null) return false;
+        String intent = action.optString("intent", "").trim();
+        if (intent.isEmpty() || intent.equals("unknown_intent") || intent.equals("execute_sql")) return false;
+        return action.optJSONObject("data") != null;
+    }
+
+    private static boolean isUnknownIntent(JSONObject action) {
+        return action != null && "unknown_intent".equals(action.optString("intent", ""));
+    }
+
+    private static boolean isUsableDirectSqlAction(JSONObject action) {
+        if (action == null) return false;
+        if (!"execute_sql".equals(action.optString("intent", "").trim())) return false;
+
+        String sql = extractSqlFromAction(action);
+        if (sql.isBlank()) return false;
+
+        String firstWord = firstSqlWord(sql);
+        if (!(firstWord.equals("select") || firstWord.equals("insert") || firstWord.equals("update") || firstWord.equals("delete"))) {
+            return false;
+        }
+
+        String operation = action.optString("operation", "").trim().toUpperCase();
+        if (operation.isBlank()) {
+            operation = switch (firstWord) {
+                case "select" -> "READ";
+                case "insert" -> "CREATE";
+                case "update" -> "UPDATE";
+                case "delete" -> "DELETE";
+                default -> "UNKNOWN";
+            };
+            action.put("operation", operation);
+        }
+
+        if (!(operation.equals("READ") || operation.equals("CREATE") || operation.equals("UPDATE") || operation.equals("DELETE"))) {
+            return false;
+        }
+
+        return looksSafeEnoughForFirstLayer(sql);
     }
 
     private static JSONObject detectIntentLocally(String prompt, String selectedTable, int selectedId) {
@@ -41,7 +156,11 @@ public class OllamaAdminService {
         String original = prompt == null ? "" : prompt.trim();
 
         String table = detectTable(text);
-        if (table == null && referencesSelectedRecord(text) && selectedTable != null && !selectedTable.isBlank()) {
+        if (table == null && selectedTable != null && !selectedTable.isBlank()) {
+            /*
+             * Use the currently opened dashboard table when the user gives a natural command
+             * without saying the table name, for example: "delete Ana Esteban".
+             */
             table = selectedTable.trim();
         }
 
@@ -107,7 +226,31 @@ public class OllamaAdminService {
         }
 
         if (table != null && isDelete && id > 0) {
-            return makeIdIntent("delete_record", table, id);
+            return makeIdIntent("archive_record", table, id);
+        }
+
+        if (table != null && (isDelete || isArchiveAction) && id <= 0 && !isArchivedRead) {
+            String targetName = extractRecordNameTarget(original, table);
+
+            if (!targetName.isEmpty()) {
+                return new JSONObject()
+                        .put("intent", "archive_record_by_name")
+                        .put("data", new JSONObject()
+                                .put("table", table)
+                                .put("name", targetName));
+            }
+        }
+
+        if (table != null && isRestoreAction && id <= 0) {
+            String targetName = extractRecordNameTarget(original, table);
+
+            if (!targetName.isEmpty()) {
+                return new JSONObject()
+                        .put("intent", "restore_record_by_name")
+                        .put("data", new JSONObject()
+                                .put("table", table)
+                                .put("name", targetName));
+            }
         }
 
         if (table != null && isCreate) {
@@ -225,6 +368,38 @@ public class OllamaAdminService {
                         .put("table", table)
                         .put("id", id)
                         .put("values", new JSONObject().put("status", status)));
+    }
+
+    private static String extractRecordNameTarget(String original, String table) {
+        if (original == null) {
+            return "";
+        }
+
+        String value = original.trim();
+
+        value = value.replaceFirst("(?i)^\\s*(delete|remove|archive|deactivate|disable|soft\\s+delete|restore|unarchive|reactivate|recover)\\s+", "");
+
+        String singular = tableSingular(table);
+        if (singular != null && !singular.isBlank()) {
+            value = value.replaceFirst("(?i)^\\s*" + java.util.regex.Pattern.quote(singular) + "s?\\s+", "");
+        }
+
+        if (table != null && !table.isBlank()) {
+            value = value.replaceFirst("(?i)^\\s*" + java.util.regex.Pattern.quote(table.replace("_", " ")) + "\\s+", "");
+            value = value.replaceFirst("(?i)^\\s*" + java.util.regex.Pattern.quote(table) + "\\s+", "");
+        }
+
+        value = value.replaceFirst("(?i)^\\s*(record|row|entry)\\s+", "");
+        value = value.replaceAll("(?i)\\b(id|#|number|no\\.?|record id)\\s*\\d+\\b", "");
+        value = value.replaceAll("(?i)\\b(from|in)\\s+[a-zA-Z_ ]+$", "");
+        value = value.replaceAll("[,;]+$", "");
+        value = value.replaceAll("\\s+", " ").trim();
+
+        if (value.matches("\\d+")) {
+            return "";
+        }
+
+        return value;
     }
 
     private static JSONObject extractValues(String original, String normalizedText, String table) {
@@ -631,6 +806,198 @@ public class OllamaAdminService {
         return table;
     }
 
+    private static JSONObject callOllamaDirectSql(String adminPrompt, String selectedTable, int selectedId) throws Exception {
+        String contextText = "";
+        if (selectedTable != null && !selectedTable.isBlank() && selectedId > 0) {
+            contextText = "\nCurrent selected record context: table=" + selectedTable + ", id=" + selectedId + ". Use this only when the user says this/selected/current record.";
+        }
+
+        String schemaText = buildSchemaForPrompt();
+
+        String systemInstruction = """
+            You are the first-layer admin database operation planner for a Java Swing student record system.
+
+            Convert the admin's natural language request into exactly one safe MySQL CRUD SQL operation.
+            Return only one JSON object. No markdown. No explanation outside JSON.
+
+            JSON format when you can answer:
+            {"intent":"execute_sql","operation":"READ|CREATE|UPDATE|DELETE","sql":"SQL_HERE","requires_confirmation":true|false,"message":"short admin-friendly message"}
+
+            JSON format when the request is missing important data or is not a database operation:
+            {"intent":"unknown_intent","data":{"message":"short reason"}}
+
+            Hard rules:
+            - Use only SELECT, INSERT, UPDATE, or DELETE.
+            - Never use DROP, TRUNCATE, ALTER, CREATE, REPLACE, GRANT, REVOKE, CALL, EXECUTE, LOAD, OUTFILE, or INFILE.
+            - Return exactly one SQL statement only.
+            - Do not use SQL comments.
+            - For SELECT list/search commands, add LIMIT 100 unless the command asks for a count/total.
+            - UPDATE and DELETE must include a clear WHERE clause using an id, code, exact email, exact name, or selected record context.
+            - If the command says delete/remove/archive/deactivate/disable/soft delete, use UPDATE and set the status-like column to 'Archived'. Do not use DELETE unless the user explicitly says "permanently delete".
+            - If the command says restore/unarchive/reactivate/activate, use UPDATE and set the status-like column to 'Active'.
+            - If the table has user_status/admin_status/student_status instead of status, use the real column from the schema.
+            - Do not invent columns. Use only columns that appear in the schema.
+            - If a required id/value/table/column is unclear, return unknown_intent.
+            - For READ operations, requires_confirmation must be false.
+            - For CREATE, UPDATE, and DELETE operations, requires_confirmation must be true.
+            - Do not use parameter placeholders like ?. Put the literal values directly in SQL and escape single quotes by doubling them.
+
+            Examples:
+            "show all students" -> {"intent":"execute_sql","operation":"READ","sql":"SELECT * FROM students LIMIT 100","requires_confirmation":false,"message":"Showing students."}
+            "how many active students" -> {"intent":"execute_sql","operation":"READ","sql":"SELECT COUNT(*) AS total FROM students WHERE status = 'Active'","requires_confirmation":false,"message":"Counting active students."}
+            "delete Ana Esteban" with selected table students -> {"intent":"execute_sql","operation":"UPDATE","sql":"UPDATE students SET status = 'Archived' WHERE LOWER(CONCAT_WS(' ', first_name, middle_name, last_name)) LIKE '%ana%' AND LOWER(CONCAT_WS(' ', first_name, middle_name, last_name)) LIKE '%esteban%'","requires_confirmation":true,"message":"Archive matching student instead of permanently deleting."}
+            "archive student 5" -> {"intent":"execute_sql","operation":"UPDATE","sql":"UPDATE students SET status = 'Archived' WHERE student_id = 5","requires_confirmation":true,"message":"Archive student 5."}
+            "restore room 3" -> {"intent":"execute_sql","operation":"UPDATE","sql":"UPDATE rooms SET status = 'Active' WHERE room_id = 3","requires_confirmation":true,"message":"Restore room 3."}
+            "change room 4 capacity to 45" -> {"intent":"execute_sql","operation":"UPDATE","sql":"UPDATE rooms SET capacity = 45 WHERE room_id = 4","requires_confirmation":true,"message":"Update room capacity."}
+
+            """ + schemaText + contextText;
+
+        JSONObject requestBody = new JSONObject();
+        requestBody.put("model", OLLAMA_MODEL);
+        requestBody.put("stream", false);
+        requestBody.put("options", new JSONObject()
+                .put("temperature", 0)
+                .put("top_p", 0.1));
+
+        JSONArray messages = new JSONArray();
+        messages.put(new JSONObject().put("role", "system").put("content", systemInstruction));
+        messages.put(new JSONObject().put("role", "user").put("content", adminPrompt));
+        requestBody.put("messages", messages);
+
+        URL url = new URL(OLLAMA_URL);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setDoOutput(true);
+
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(requestBody.toString().getBytes("utf-8"));
+        }
+
+        int status = conn.getResponseCode();
+        BufferedReader reader = new BufferedReader(
+                new InputStreamReader(status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream(), "utf-8")
+        );
+
+        StringBuilder response = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            response.append(line);
+        }
+        reader.close();
+
+        if (status < 200 || status >= 300) {
+            throw new RuntimeException("Ollama error: " + status + " - " + response);
+        }
+
+        JSONObject obj = new JSONObject(response.toString());
+        String content = obj.getJSONObject("message").getString("content");
+        content = stripCodeFences(content);
+        content = extractJsonObject(content);
+        return new JSONObject(content);
+    }
+
+    private static String buildSchemaForPrompt() {
+        StringBuilder schema = new StringBuilder("\nAllowed database schema:\n");
+
+        try (Connection conn = DBConnection.getConnection()) {
+            for (String table : ALLOWED_TABLE_NAMES) {
+                schema.append("- ").append(table).append("(");
+
+                String sql = """
+                    SELECT COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME = ?
+                    ORDER BY ORDINAL_POSITION
+                """;
+
+                boolean hasColumn = false;
+                try (PreparedStatement pst = conn.prepareStatement(sql)) {
+                    pst.setString(1, table);
+                    try (ResultSet rs = pst.executeQuery()) {
+                        while (rs.next()) {
+                            if (hasColumn) schema.append(", ");
+                            schema.append(rs.getString("COLUMN_NAME"));
+                            hasColumn = true;
+                        }
+                    }
+                }
+
+                if (!hasColumn) {
+                    schema.append("columns unknown");
+                }
+
+                schema.append(")\n");
+            }
+        } catch (Exception e) {
+            schema.append("Allowed tables only: ");
+            for (int i = 0; i < ALLOWED_TABLE_NAMES.length; i++) {
+                schema.append(ALLOWED_TABLE_NAMES[i]);
+                if (i < ALLOWED_TABLE_NAMES.length - 1) schema.append(", ");
+            }
+            schema.append("\n");
+        }
+
+        return schema.toString();
+    }
+
+    private static String extractSqlFromAction(JSONObject action) {
+        String sql = action.optString("sql", "").trim();
+        if (!sql.isBlank()) return sql;
+
+        JSONObject data = action.optJSONObject("data");
+        if (data != null) {
+            return data.optString("sql", "").trim();
+        }
+
+        return "";
+    }
+
+    private static String firstSqlWord(String sql) {
+        String trimmed = sql == null ? "" : sql.trim().toLowerCase();
+        Matcher matcher = Pattern.compile("^([a-z]+)").matcher(trimmed);
+        return matcher.find() ? matcher.group(1) : "";
+    }
+
+    private static boolean looksSafeEnoughForFirstLayer(String sql) {
+        if (sql == null || sql.trim().isBlank()) return false;
+
+        String trimmed = sql.trim();
+        String withoutLastSemicolon = trimmed.endsWith(";") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
+        if (withoutLastSemicolon.contains(";")) return false;
+
+        String lower = withoutLastSemicolon.toLowerCase().replaceAll("\\s+", " ").trim();
+        if (lower.contains("--") || lower.contains("/*") || lower.contains("*/") || lower.contains("#")) return false;
+
+        if (lower.matches(".*\\b(drop|truncate|alter|create|replace|grant|revoke|call|execute|load|outfile|infile|rename|use|lock|unlock)\\b.*")) {
+            return false;
+        }
+
+        String first = firstSqlWord(withoutLastSemicolon);
+        if ((first.equals("update") || first.equals("delete")) && !lower.matches(".*\\bwhere\\b.*")) {
+            return false;
+        }
+
+        if (lower.contains("where 1=1") || lower.contains("where true")) {
+            return false;
+        }
+
+        Pattern tablePattern = Pattern.compile("(?i)\\b(?:from|join|into|update)\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?");
+        Matcher matcher = tablePattern.matcher(withoutLastSemicolon);
+        boolean foundTable = false;
+
+        while (matcher.find()) {
+            String table = matcher.group(2) != null ? matcher.group(2) : matcher.group(1);
+            if (table == null || !ALLOWED_TABLES.contains(table.toLowerCase())) {
+                return false;
+            }
+            foundTable = true;
+        }
+
+        return foundTable;
+    }
+
     private static JSONObject callOllama(String adminPrompt, String selectedTable, int selectedId) throws Exception {
 
         String contextText = "";
@@ -655,7 +1022,7 @@ public class OllamaAdminService {
             Allowed intents:
             get_table_records, get_record_by_id, get_archived_students, get_archived_records,
             get_active_records, count_records, count_archived_records, count_active_records,
-            create_record, update_record, delete_record, archive_record, restore_record, unknown_intent
+            create_record, update_record, delete_record, archive_record, archive_record_by_name, restore_record, unknown_intent
 
             JSON formats:
             Read all: {"intent":"get_table_records","data":{"table":"students"}}
@@ -671,7 +1038,8 @@ public class OllamaAdminService {
             show/list/view/get/display/find/see/fetch = READ.
             create/add/insert/register/new/encode/save new = CREATE.
             change/update/edit/set/modify/rename/correct/revise/make/turn = UPDATE.
-            delete/remove/erase/drop/destroy/permanently remove = DELETE.
+            delete/remove/erase/drop/destroy = ARCHIVE, not permanent delete.
+            permanently remove = DELETE only when the admin explicitly asks for permanent deletion.
             archive/deactivate/disable/mark inactive/soft delete = ARCHIVE, not delete.
             restore/unarchive/reactivate/activate again/recover/bring back = RESTORE.
             count/how many/total number/number of = COUNT.
@@ -698,6 +1066,7 @@ public class OllamaAdminService {
             "archived students" -> {"intent":"get_archived_students","data":{}}
             "show archived subjects" -> {"intent":"get_archived_records","data":{"table":"subjects"}}
             "how many active students" -> {"intent":"count_active_records","data":{"table":"students"}}
+            "delete Ana Esteban" with selected table students -> {"intent":"archive_record_by_name","data":{"table":"students","name":"Ana Esteban"}}
             "archive student 3" -> {"intent":"archive_record","data":{"table":"students","id":3}}
             "deactivate subject id 9" -> {"intent":"archive_record","data":{"table":"subjects","id":9}}
             "restore student 3" -> {"intent":"restore_record","data":{"table":"students","id":3}}

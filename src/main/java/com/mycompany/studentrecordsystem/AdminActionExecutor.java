@@ -29,13 +29,18 @@ public class AdminActionExecutor {
 
     public static String execute(JSONObject actionJson) {
         String intent = actionJson.optString("intent", "").trim();
-        JSONObject data = actionJson.optJSONObject("data");
-
-        if (intent.isEmpty() || data == null) {
-            return "Invalid AI response: missing intent or data.";
-        }
 
         try {
+            if ("execute_sql".equals(intent)) {
+                return executeSqlOperation(actionJson);
+            }
+
+            JSONObject data = actionJson.optJSONObject("data");
+
+            if (intent.isEmpty() || data == null) {
+                return "Invalid AI response: missing intent or data.";
+            }
+
             return switch (intent) {
                 case "get_table_records" -> getTableRecords(data);
                 case "get_record_by_id" -> getRecordById(data);
@@ -48,6 +53,8 @@ public class AdminActionExecutor {
                 case "update_record" -> updateRecord(data);
                 case "delete_record" -> deleteRecord(data);
                 case "archive_record" -> archiveRecord(data);
+                case "archive_record_by_name", "delete_record_by_name" -> archiveRecordByName(data);
+                case "restore_record_by_name" -> restoreRecordByName(data);
                 case "restore_record" -> restoreRecord(data);
 
                 case "create_student" -> createStudent(data);
@@ -466,28 +473,266 @@ public class AdminActionExecutor {
     }
 
     private static String deleteRecord(JSONObject data) throws Exception {
+        /*
+         * Soft delete:
+         * Admin commands that say "delete/remove" should not permanently remove records.
+         * They are archived by changing the status column to Archived.
+         */
+        return updateRecordStatus(data, ARCHIVED_STATUS, "archived");
+    }
+
+    private static String archiveRecordByName(JSONObject data) throws Exception {
         String table = data.optString("table", "").trim();
-        int id = data.optInt("id", 0);
+        String targetName = data.optString("name", data.optString("target_name", "")).trim();
 
         validateTable(table);
 
-        if (id <= 0) {
-            return "Validation failed: id is required.";
+        if (targetName.isEmpty()) {
+            return "Validation failed: name is required.";
         }
 
-        String primaryKey = getPrimaryKey(table);
-
         try (Connection conn = DBConnection.getConnection()) {
-            String sql = "DELETE FROM " + table + " WHERE " + primaryKey + " = ?";
+            String statusError = requireStatusColumn(conn, table);
+            if (statusError != null) {
+                return statusError;
+            }
+
+            String primaryKey = getPrimaryKey(table);
+            String statusColumn = resolveColumnName(conn, table, "status");
+            String nameExpression = getSearchableNameExpression(conn, table);
+
+            if (nameExpression == null || nameExpression.isBlank()) {
+                return "Validation failed: I cannot search " + table + " by name because no name column was found.";
+            }
+
+            java.util.List<RecordNameMatch> matches = findActiveRecordsByName(
+                    conn, table, primaryKey, statusColumn, nameExpression, targetName
+            );
+
+            if (matches.isEmpty()) {
+                return "No active matching record found for \"" + targetName + "\" in " + table + ".";
+            }
+
+            if (matches.size() > 1) {
+                StringBuilder result = new StringBuilder();
+                result.append("Multiple active records matched \"").append(targetName).append("\" in ")
+                        .append(table).append(". Please include the ID:\n");
+
+                for (RecordNameMatch match : matches) {
+                    result.append("ID: ").append(match.id)
+                            .append(" | ").append(match.displayName)
+                            .append("\n");
+                }
+
+                return result.toString();
+            }
+
+            RecordNameMatch match = matches.get(0);
+            String sql = "UPDATE " + table + " SET `" + statusColumn + "` = ? WHERE " + primaryKey + " = ?";
 
             try (PreparedStatement pst = conn.prepareStatement(sql)) {
-                pst.setInt(1, id);
+                pst.setString(1, ARCHIVED_STATUS);
+                pst.setObject(2, match.id);
 
                 int rows = pst.executeUpdate();
+
                 return rows > 0
-                        ? "Record deleted successfully from " + table + "."
-                        : "Record delete failed.";
+                        ? "Record archived successfully in " + table + ": " + match.displayName + " (ID: " + match.id + ")."
+                        : "Record archive failed.";
             }
+        }
+    }
+
+    private static String restoreRecordByName(JSONObject data) throws Exception {
+        String table = data.optString("table", "").trim();
+        String targetName = data.optString("name", data.optString("target_name", "")).trim();
+
+        validateTable(table);
+
+        if (targetName.isEmpty()) {
+            return "Validation failed: name is required.";
+        }
+
+        try (Connection conn = DBConnection.getConnection()) {
+            String statusError = requireStatusColumn(conn, table);
+            if (statusError != null) {
+                return statusError;
+            }
+
+            String primaryKey = getPrimaryKey(table);
+            String statusColumn = resolveColumnName(conn, table, "status");
+            String nameExpression = getSearchableNameExpression(conn, table);
+
+            if (nameExpression == null || nameExpression.isBlank()) {
+                return "Validation failed: I cannot search " + table + " by name because no name column was found.";
+            }
+
+            java.util.List<RecordNameMatch> matches = findRecordsByNameAndStatus(
+                    conn, table, primaryKey, statusColumn, nameExpression, targetName, ARCHIVED_STATUS
+            );
+
+            if (matches.isEmpty()) {
+                return "No archived matching record found for \"" + targetName + "\" in " + table + ".";
+            }
+
+            if (matches.size() > 1) {
+                StringBuilder result = new StringBuilder();
+                result.append("Multiple archived records matched \"").append(targetName).append("\" in ")
+                        .append(table).append(". Please include the ID:\n");
+
+                for (RecordNameMatch match : matches) {
+                    result.append("ID: ").append(match.id)
+                            .append(" | ").append(match.displayName)
+                            .append("\n");
+                }
+
+                return result.toString();
+            }
+
+            RecordNameMatch match = matches.get(0);
+            String sql = "UPDATE " + table + " SET `" + statusColumn + "` = ? WHERE " + primaryKey + " = ?";
+
+            try (PreparedStatement pst = conn.prepareStatement(sql)) {
+                pst.setString(1, ACTIVE_STATUS);
+                pst.setObject(2, match.id);
+
+                int rows = pst.executeUpdate();
+
+                return rows > 0
+                        ? "Record restored successfully in " + table + ": " + match.displayName + " (ID: " + match.id + ")."
+                        : "Record restore failed.";
+            }
+        }
+    }
+
+    private static java.util.List<RecordNameMatch> findActiveRecordsByName(
+            Connection conn,
+            String table,
+            String primaryKey,
+            String statusColumn,
+            String nameExpression,
+            String targetName
+    ) throws SQLException {
+        java.util.List<RecordNameMatch> matches = new java.util.ArrayList<>();
+        String[] words = targetName.toLowerCase().trim().split("\\s+");
+
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT ").append(primaryKey).append(" AS record_id, ")
+                .append(nameExpression).append(" AS display_name ")
+                .append("FROM ").append(table)
+                .append(" WHERE LOWER(`").append(statusColumn).append("`) <> LOWER(?) ");
+
+        for (int i = 0; i < words.length; i++) {
+            sql.append(" AND LOWER(").append(nameExpression).append(") LIKE ? ");
+        }
+
+        sql.append(" LIMIT 20");
+
+        try (PreparedStatement pst = conn.prepareStatement(sql.toString())) {
+            pst.setString(1, ARCHIVED_STATUS);
+
+            for (int i = 0; i < words.length; i++) {
+                pst.setString(i + 2, "%" + words[i] + "%");
+            }
+
+            try (ResultSet rs = pst.executeQuery()) {
+                while (rs.next()) {
+                    matches.add(new RecordNameMatch(
+                            rs.getObject("record_id"),
+                            rs.getString("display_name")
+                    ));
+                }
+            }
+        }
+
+        return matches;
+    }
+
+    private static java.util.List<RecordNameMatch> findRecordsByNameAndStatus(
+            Connection conn,
+            String table,
+            String primaryKey,
+            String statusColumn,
+            String nameExpression,
+            String targetName,
+            String requiredStatus
+    ) throws SQLException {
+        java.util.List<RecordNameMatch> matches = new java.util.ArrayList<>();
+        String[] words = targetName.toLowerCase().trim().split("\\s+");
+
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT ").append(primaryKey).append(" AS record_id, ")
+                .append(nameExpression).append(" AS display_name ")
+                .append("FROM ").append(table)
+                .append(" WHERE LOWER(`").append(statusColumn).append("`) = LOWER(?) ");
+
+        for (int i = 0; i < words.length; i++) {
+            sql.append(" AND LOWER(").append(nameExpression).append(") LIKE ? ");
+        }
+
+        sql.append(" LIMIT 20");
+
+        try (PreparedStatement pst = conn.prepareStatement(sql.toString())) {
+            pst.setString(1, requiredStatus);
+
+            for (int i = 0; i < words.length; i++) {
+                pst.setString(i + 2, "%" + words[i] + "%");
+            }
+
+            try (ResultSet rs = pst.executeQuery()) {
+                while (rs.next()) {
+                    matches.add(new RecordNameMatch(
+                            rs.getObject("record_id"),
+                            rs.getString("display_name")
+                    ));
+                }
+            }
+        }
+
+        return matches;
+    }
+
+    private static String getSearchableNameExpression(Connection conn, String table) throws SQLException {
+        if (tableHasColumn(conn, table, "first_name") && tableHasColumn(conn, table, "middle_name") && tableHasColumn(conn, table, "last_name")) {
+            return "CONCAT_WS(' ', first_name, NULLIF(middle_name, ''), last_name)";
+        }
+
+        if (tableHasColumn(conn, table, "first_name") && tableHasColumn(conn, table, "last_name")) {
+            return "CONCAT_WS(' ', first_name, last_name)";
+        }
+
+        String[] candidates = {
+                "full_name",
+                "name",
+                tableSingular(table) + "_name",
+                "student_name",
+                "instructor_name",
+                "subject_name",
+                "room_name",
+                "course_name",
+                "section_name",
+                "department_name",
+                "semester_name",
+                "username",
+                "email"
+        };
+
+        for (String column : candidates) {
+            if (column != null && !column.isBlank() && tableHasColumn(conn, table, column)) {
+                return "`" + column + "`";
+            }
+        }
+
+        return null;
+    }
+
+    private static class RecordNameMatch {
+        Object id;
+        String displayName;
+
+        RecordNameMatch(Object id, String displayName) {
+            this.id = id;
+            this.displayName = displayName == null ? "" : displayName;
         }
     }
 
@@ -531,6 +776,176 @@ public class AdminActionExecutor {
                         : "Record " + actionWord + " failed.";
             }
         }
+    }
+
+    private static String executeSqlOperation(JSONObject actionJson) throws Exception {
+        String sql = extractSqlFromAction(actionJson);
+        String cleanedSql = cleanAndValidateSql(sql);
+        String firstWord = firstSqlWord(cleanedSql);
+
+        try (Connection conn = DBConnection.getConnection()) {
+            if ("select".equals(firstWord)) {
+                String selectSql = addLimitIfNeeded(cleanedSql);
+                try (PreparedStatement pst = conn.prepareStatement(selectSql);
+                     ResultSet rs = pst.executeQuery()) {
+                    return formatResultSet("Requested information:", rs);
+                }
+            }
+
+            /*
+             * Safety rule:
+             * Even if the AI returns DELETE SQL, this system treats delete/remove as soft delete.
+             * The DELETE is converted to UPDATE status = 'Archived' when the table supports status.
+             */
+            if ("delete".equals(firstWord)) {
+                return archiveDeleteSql(conn, cleanedSql);
+            }
+
+            try (PreparedStatement pst = conn.prepareStatement(cleanedSql)) {
+                int rows = pst.executeUpdate();
+                String operation = switch (firstWord) {
+                    case "insert" -> "created";
+                    case "update" -> "updated";
+                    default -> "changed";
+                };
+
+                return rows > 0
+                        ? "SQL operation executed successfully. Records " + operation + ": " + rows + "."
+                        : "SQL operation completed, but no records were changed.";
+            }
+        }
+    }
+
+    private static String archiveDeleteSql(Connection conn, String deleteSql) throws Exception {
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+                "(?is)^\\s*DELETE\\s+FROM\\s+`?([A-Za-z0-9_]+)`?\\s+WHERE\\s+(.+?)\\s*$"
+        );
+        java.util.regex.Matcher matcher = pattern.matcher(deleteSql == null ? "" : deleteSql.trim());
+
+        if (!matcher.find()) {
+            throw new IllegalArgumentException("Validation failed: DELETE could not be converted to archive.");
+        }
+
+        String table = matcher.group(1).toLowerCase().trim();
+        String whereClause = matcher.group(2).trim();
+
+        validateTable(table);
+
+        String statusError = requireStatusColumn(conn, table);
+        if (statusError != null) {
+            return statusError + " Permanent delete was not performed.";
+        }
+
+        String statusColumn = resolveColumnName(conn, table, "status");
+        String sql = "UPDATE " + table + " SET `" + statusColumn + "` = ? WHERE " + whereClause;
+
+        try (PreparedStatement pst = conn.prepareStatement(sql)) {
+            pst.setString(1, ARCHIVED_STATUS);
+            int rows = pst.executeUpdate();
+
+            return rows > 0
+                    ? "SQL delete request was safely archived instead. Records archived: " + rows + "."
+                    : "SQL delete request was converted to archive, but no records were changed.";
+        }
+    }
+
+
+    private static String extractSqlFromAction(JSONObject actionJson) {
+        String sql = actionJson.optString("sql", "").trim();
+        if (!sql.isBlank()) return sql;
+
+        JSONObject data = actionJson.optJSONObject("data");
+        if (data != null) {
+            return data.optString("sql", "").trim();
+        }
+
+        return "";
+    }
+
+    private static String cleanAndValidateSql(String sql) {
+        if (sql == null || sql.trim().isBlank()) {
+            throw new IllegalArgumentException("Validation failed: SQL is required.");
+        }
+
+        String trimmed = sql.trim();
+        if (trimmed.endsWith(";")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
+        }
+
+        if (trimmed.contains(";")) {
+            throw new IllegalArgumentException("Validation failed: only one SQL statement is allowed.");
+        }
+
+        String lower = trimmed.toLowerCase().replaceAll("\\s+", " ").trim();
+
+        if (lower.contains("--") || lower.contains("/*") || lower.contains("*/") || lower.contains("#")) {
+            throw new IllegalArgumentException("Validation failed: SQL comments are not allowed.");
+        }
+
+        if (lower.matches(".*\\b(drop|truncate|alter|create|replace|grant|revoke|call|execute|load|outfile|infile|rename|use|lock|unlock)\\b.*")) {
+            throw new IllegalArgumentException("Validation failed: dangerous SQL command is not allowed.");
+        }
+
+        if (lower.matches(".*\\b(information_schema|mysql|performance_schema|sys)\\b.*")) {
+            throw new IllegalArgumentException("Validation failed: system database access is not allowed.");
+        }
+
+        String firstWord = firstSqlWord(trimmed);
+        if (!(firstWord.equals("select") || firstWord.equals("insert") || firstWord.equals("update") || firstWord.equals("delete"))) {
+            throw new IllegalArgumentException("Validation failed: only SELECT, INSERT, UPDATE, and DELETE are allowed.");
+        }
+
+        if ((firstWord.equals("update") || firstWord.equals("delete")) && !lower.matches(".*\\bwhere\\b.*")) {
+            throw new IllegalArgumentException("Validation failed: UPDATE and DELETE must include a WHERE clause.");
+        }
+
+        if (lower.contains("where 1=1") || lower.contains("where true")) {
+            throw new IllegalArgumentException("Validation failed: broad WHERE clauses are not allowed.");
+        }
+
+        java.util.Set<String> referencedTables = extractReferencedTables(trimmed);
+        if (referencedTables.isEmpty()) {
+            throw new IllegalArgumentException("Validation failed: no valid table was found.");
+        }
+
+        for (String table : referencedTables) {
+            validateTable(table);
+        }
+
+        return trimmed;
+    }
+
+    private static String firstSqlWord(String sql) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("^\\s*([a-zA-Z]+)")
+                .matcher(sql == null ? "" : sql);
+        return matcher.find() ? matcher.group(1).toLowerCase() : "";
+    }
+
+    private static java.util.Set<String> extractReferencedTables(String sql) {
+        java.util.Set<String> tables = new java.util.LinkedHashSet<>();
+
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+                "(?i)\\b(?:from|join|into|update)\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?"
+        );
+
+        java.util.regex.Matcher matcher = pattern.matcher(sql == null ? "" : sql);
+        while (matcher.find()) {
+            String table = matcher.group(2) != null ? matcher.group(2) : matcher.group(1);
+            if (table != null && !table.isBlank()) {
+                tables.add(table.toLowerCase());
+            }
+        }
+
+        return tables;
+    }
+
+    private static String addLimitIfNeeded(String sql) {
+        String lower = sql.toLowerCase();
+        if (!lower.startsWith("select")) return sql;
+        if (lower.matches(".*\\blimit\\s+\\d+.*")) return sql;
+        if (lower.matches(".*\\bcount\\s*\\(.*")) return sql;
+        return sql + " LIMIT 100";
     }
 
     private static String formatResultSet(String title, ResultSet rs) throws SQLException {
@@ -965,30 +1380,11 @@ public class AdminActionExecutor {
     }
 
     private static String deleteStudent(JSONObject data) throws Exception {
-        int studentId = data.optInt("student_id", data.optInt("id", 0));
-
-        if (studentId <= 0) {
-            return "Validation failed: student_id is required.";
-        }
-
-        try (Connection conn = DBConnection.getConnection()) {
-            if (!studentExists(conn, studentId)) {
-                return "Validation failed: student not found.";
-            }
-
-            String studentInfo = getStudentDetailsText(conn, studentId);
-            String sql = "DELETE FROM students WHERE student_id = ?";
-
-            try (PreparedStatement pst = conn.prepareStatement(sql)) {
-                pst.setInt(1, studentId);
-
-                int rows = pst.executeUpdate();
-
-                return rows > 0
-                        ? "Student deleted successfully.\n\nDeleted student information:\n" + studentInfo
-                        : "Student delete failed.";
-            }
-        }
+        /*
+         * Soft delete for students:
+         * Delete commands archive the student instead of permanently deleting the row.
+         */
+        return archiveStudent(data);
     }
 
     private static String getStudentDetailsText(Connection conn, int studentId) throws SQLException {

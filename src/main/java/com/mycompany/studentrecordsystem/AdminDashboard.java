@@ -58,9 +58,6 @@ public class AdminDashboard extends javax.swing.JFrame {
     private String currentTable = "students";
     private final Map<String, JButton> menuButtons = new HashMap<>();
 
-    /**
-     * Creates new form AdminDashboard
-     */
     public AdminDashboard() {
         initComponents();
         setupFormDashboard();
@@ -68,10 +65,6 @@ public class AdminDashboard extends javax.swing.JFrame {
         loadTableData("students");
     }
 
-    /**
-     * This method is called from within the constructor to initialize the form.
-     * WARNING: Do NOT modify this code manually when using NetBeans Design View.
-     */
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
     private void initComponents() {
@@ -624,17 +617,12 @@ public class AdminDashboard extends javax.swing.JFrame {
         pageTitleLabel.setForeground(text);
         pageSubtitleLabel.setForeground(muted);
         connectionStatusLabel.setForeground(muted);
-        //menuIconButton.setFocusPainted(false);
-        //menuIconButton.setBorderPainted(false);
-        //menuIconButton.setContentAreaFilled(false);
-        //menuIconButton.setForeground(muted);
 
         styleCard(studentCardPanel, true);
         styleCard(coursesCardPanel, false);
         styleCard(subjectsCardPanel, false);
         styleCard(schedulesCardPanel, false);
 
-        // keep preview and runtime closer
         studentCardPanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(220, 228, 237)),
                 new EmptyBorder(18, 18, 18, 18)
@@ -662,7 +650,6 @@ public class AdminDashboard extends javax.swing.JFrame {
         actionsPanel.setOpaque(false);
         actionsPanel.setLayout(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         tableTitleLabel.setForeground(text);
-        //tableHintLabel.setForeground(muted);
 
         searchField.setColumns(24);
         searchField.setFont(new Font("Segoe UI", Font.PLAIN, 13));
@@ -766,7 +753,6 @@ public class AdminDashboard extends javax.swing.JFrame {
         crudButton.addActionListener(e -> openCrudDialog());
         adminAIButton.addActionListener(e -> openAdminAIFrame());
         logoutButton.addActionListener(e -> logout());
-        //menuIconButton.addActionListener(e -> sidebarPanel.setVisible(!sidebarPanel.isVisible()));
     }
 
     private void configureTableButton(JButton button, String table) {
@@ -1082,18 +1068,31 @@ public class AdminDashboard extends javax.swing.JFrame {
     }
 
     private void deleteSelectedRecord(String table) {
+        /*
+         * Soft delete:
+         * The Delete button now archives the selected row by updating status = 'Archived'.
+         * It does not permanently DELETE the database row.
+         */
         if (!isAllowedTable(table)) return;
 
         int selected = dataTable.getSelectedRow();
         if (selected < 0) {
-            JOptionPane.showMessageDialog(this, "Please select a row to delete.");
+            JOptionPane.showMessageDialog(this, "Please select a row to delete/archive.");
+            return;
+        }
+
+        if (!tableHasArchiveSupport(table)) {
+            JOptionPane.showMessageDialog(this,
+                    "This table has no status column, so delete-as-archive is not available.",
+                    "Archive Not Available",
+                    JOptionPane.WARNING_MESSAGE);
             return;
         }
 
         int confirm = JOptionPane.showConfirmDialog(
                 this,
-                "Delete selected record permanently?\n\nTip: If the table supports status, use Archive instead.",
-                "Confirm Delete",
+                "Archive selected record instead of permanently deleting it?",
+                "Confirm Archive",
                 JOptionPane.YES_NO_OPTION,
                 JOptionPane.WARNING_MESSAGE
         );
@@ -1105,19 +1104,21 @@ public class AdminDashboard extends javax.swing.JFrame {
             List<ColumnInfo> columns = getColumns(conn, table);
             ColumnInfo primaryKey = getPrimaryKey(columns);
             if (primaryKey == null) {
-                JOptionPane.showMessageDialog(this, "This table has no primary key. Delete is not available.");
+                JOptionPane.showMessageDialog(this, "This table has no primary key. Archive is not available.");
                 return;
             }
 
             Map<String, Object> rowValues = getSelectedRowValues(columns, modelRow);
             Object primaryValue = rowValues.get(primaryKey.name);
+            String archiveValue = "Archived";
 
-            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM `" + table + "` WHERE `" + primaryKey.name + "` = ?")) {
-                setPreparedValue(ps, 1, primaryValue, primaryKey);
+            try (PreparedStatement ps = conn.prepareStatement("UPDATE `" + table + "` SET `status` = ? WHERE `" + primaryKey.name + "` = ?")) {
+                ps.setString(1, archiveValue);
+                setPreparedValue(ps, 2, primaryValue, primaryKey);
                 ps.executeUpdate();
             }
 
-            JOptionPane.showMessageDialog(this, "Record deleted successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Record archived successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
             afterDataChanged(table);
         } catch (Exception ex) {
             showDatabaseError(ex);
@@ -1234,7 +1235,7 @@ private void openCrudDialog() {
         JButton add = createActionButton("Add", new Color(37, 99, 235));
         JButton edit = createActionButton("Update", new Color(22, 163, 74));
         JButton archive = createActionButton("Archive", new Color(245, 158, 11));
-        JButton delete = createActionButton("Delete", new Color(220, 38, 38));
+        JButton delete = createActionButton("Delete (Archive)", new Color(220, 38, 38));
         JButton close = createActionButton("Close", new Color(100, 116, 139));
 
         bottom.add(add);
@@ -1645,12 +1646,24 @@ private void openCrudDialog() {
     }
 
     private void deleteRecordByPrimaryValue(String table, Object primaryValue) {
+        /*
+         * Soft delete from the Records dialog.
+         * Delete archives by updating status = 'Archived' instead of permanently deleting.
+         */
         if (!isAllowedTable(table)) return;
+
+        if (!tableHasArchiveSupport(table)) {
+            JOptionPane.showMessageDialog(this,
+                    "This table has no status column, so delete-as-archive is not available.",
+                    "Archive Not Available",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
 
         int confirm = JOptionPane.showConfirmDialog(
                 this,
-                "Delete selected record permanently?\n\nTip: If the table supports status, use Archive instead.",
-                "Confirm Delete",
+                "Archive selected record instead of permanently deleting it?",
+                "Confirm Archive",
                 JOptionPane.YES_NO_OPTION,
                 JOptionPane.WARNING_MESSAGE
         );
@@ -1660,16 +1673,17 @@ private void openCrudDialog() {
             List<ColumnInfo> columns = getColumns(conn, table);
             ColumnInfo primaryKey = getPrimaryKey(columns);
             if (primaryKey == null) {
-                JOptionPane.showMessageDialog(this, "This table has no primary key. Delete is not available.");
+                JOptionPane.showMessageDialog(this, "This table has no primary key. Archive is not available.");
                 return;
             }
 
-            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM `" + table + "` WHERE `" + primaryKey.name + "` = ?")) {
-                setPreparedValue(ps, 1, primaryValue, primaryKey);
+            try (PreparedStatement ps = conn.prepareStatement("UPDATE `" + table + "` SET `status` = ? WHERE `" + primaryKey.name + "` = ?")) {
+                ps.setString(1, "Archived");
+                setPreparedValue(ps, 2, primaryValue, primaryKey);
                 ps.executeUpdate();
             }
 
-            JOptionPane.showMessageDialog(this, "Record deleted successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Record archived successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
             afterDataChanged(table);
         } catch (Exception ex) {
             showDatabaseError(ex);
@@ -1956,19 +1970,37 @@ private void openCrudDialog() {
 
     private void openAdminAIFrame() {
         try {
-            Class<?> clazz = Class.forName("com.mycompany.studentrecordsystem.AdminAIFrame");
-            Constructor<?> constructor = clazz.getDeclaredConstructor();
-            Object instance = constructor.newInstance();
-            if (instance instanceof JFrame) {
-                ((JFrame) instance).setVisible(true);
-            } else {
-                throw new IllegalStateException("AdminAIFrame is not a JFrame.");
-            }
+            int selectedId = getSelectedPrimaryIdSilently();
+            new AdminAIFrame(currentTable, selectedId).setVisible(true);
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(this,
                     "AdminAIFrame cannot be opened. Make sure AdminAIFrame.java is in the same package and has no compile errors.",
                     "Admin AI Error",
                     JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private int getSelectedPrimaryIdSilently() {
+        if (dataTable == null || tableModel == null || tableModel.getColumnCount() == 0) {
+            return 0;
+        }
+
+        int selected = dataTable.getSelectedRow();
+        if (selected < 0) {
+            return 0;
+        }
+
+        int modelRow = dataTable.convertRowIndexToModel(selected);
+        Object value = tableModel.getValueAt(modelRow, 0);
+
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (Exception ignored) {
+            return 0;
         }
     }
 

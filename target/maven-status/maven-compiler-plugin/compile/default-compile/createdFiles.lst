@@ -4,11 +4,13 @@ com\mycompany\studentrecordsystem\AdminAIMain.class
 com\mycompany\studentrecordsystem\AdminDashboard$3.class
 com\mycompany\studentrecordsystem\LoginFrame$1.class
 com\mycompany\studentrecordsystem\DBConnection.class
+com\mycompany\studentrecordsystem\AdminAIFrame$LoadingBubble.class
 com\mycompany\studentrecordsystem\AdminDashboard$1.class
 com\mycompany\studentrecordsystem\AdminDashboard$PieChartPanel.class
 com\mycompany\studentrecordsystem\AdminActionExecutor.class
 com\mycompany\studentrecordsystem\AdminDashboard.class
 com\mycompany\studentrecordsystem\OllamaAdminService.class
+com\mycompany\studentrecordsystem\AdminActionExecutor$RecordNameMatch.class
 com\mycompany\studentrecordsystem\AdminAIFrame.class
 com\mycompany\studentrecordsystem\AdminDashboard$ColumnInfo.class
 com\mycompany\studentrecordsystem\AdminDashboard$RoundedPanel.class

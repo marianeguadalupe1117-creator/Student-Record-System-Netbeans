@@ -29,7 +29,16 @@ public class AdminAIFrame extends javax.swing.JFrame {
     private final Color textLight = new Color(244, 247, 250);
     private final Color textMuted = new Color(154, 169, 191);
 
+    private String selectedTable = "students";
+    private int selectedId = 0;
+
     public AdminAIFrame() {
+        this("students", 0);
+    }
+
+    public AdminAIFrame(String selectedTable, int selectedId) {
+        this.selectedTable = selectedTable == null || selectedTable.isBlank() ? "students" : selectedTable.trim();
+        this.selectedId = selectedId;
         initComponents();
         setupModernAIFrame();
         addWelcomeMessage();
@@ -298,7 +307,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
     }
 
     private void addWelcomeMessage() {
-        addAssistantTextMessage("Welcome back, Admin. I can help you view records, create records, update records, archive records, delete records, and search your student record database.");
+        addAssistantTextMessage("Welcome back, Admin. I can help you view records, create records, update records, archive records, and search your student record database. Delete/remove commands are treated as archive, not permanent delete. Current table context: " + selectedTable + ".");
     }
 
     private void runAdminAction() {
@@ -316,17 +325,22 @@ public class AdminAIFrame extends javax.swing.JFrame {
         aiReadyLabel.setText("● Processing");
         aiReadyLabel.setForeground(accentOrange);
 
-        JPanel loadingBubble = addAssistantLoadingMessage();
+        LoadingBubble loadingBubble = addAssistantLoadingMessage();
 
         new Thread(() -> {
             try {
-                JSONObject actionJson = OllamaAdminService.getAdminAction(adminPrompt);
+                JSONObject actionJson = OllamaAdminService.getAdminAction(
+                        adminPrompt,
+                        selectedTable,
+                        selectedId,
+                        status -> updateAssistantLoadingMessage(loadingBubble, status)
+                );
                 String intent = actionJson.optString("intent", "");
 
-                if (needsConfirmation(intent)) {
+                if (needsConfirmation(actionJson)) {
                     int confirm = JOptionPane.showConfirmDialog(
                             this,
-                            "Are you sure you want to proceed?\n\nThis action may change your database records.",
+                            buildConfirmationMessage(actionJson),
                             "Confirm Action",
                             JOptionPane.YES_NO_OPTION,
                             JOptionPane.WARNING_MESSAGE
@@ -334,7 +348,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
 
                     if (confirm != JOptionPane.YES_OPTION) {
                         SwingUtilities.invokeLater(() -> {
-                            chatMessagesPanel.remove(loadingBubble);
+                            chatMessagesPanel.remove(loadingBubble.wrapper);
                             addAssistantTextMessage("Action cancelled.");
                             resetSendButton();
                         });
@@ -345,7 +359,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
                 String result = AdminActionExecutor.execute(actionJson);
 
                 SwingUtilities.invokeLater(() -> {
-                    chatMessagesPanel.remove(loadingBubble);
+                    chatMessagesPanel.remove(loadingBubble.wrapper);
                     addAssistantResultMessage(intent, result);
                     showSuccessDialogIfNeeded(intent, result);
                     resetSendButton();
@@ -354,7 +368,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
 
             } catch (Exception ex) {
                 SwingUtilities.invokeLater(() -> {
-                    chatMessagesPanel.remove(loadingBubble);
+                    chatMessagesPanel.remove(loadingBubble.wrapper);
                     addAssistantTextMessage("Invalid information.");
                     resetSendButton();
                 });
@@ -391,7 +405,7 @@ public class AdminAIFrame extends javax.swing.JFrame {
         refreshChat();
     }
 
-    private JPanel addAssistantLoadingMessage() {
+    private LoadingBubble addAssistantLoadingMessage() {
         RoundedBubble bubble = new RoundedBubble(18, new Color(17, 34, 58), accentCyan);
         bubble.setLayout(new BorderLayout());
         bubble.setBorder(new EmptyBorder(12, 14, 12, 14));
@@ -410,7 +424,29 @@ public class AdminAIFrame extends javax.swing.JFrame {
         chatMessagesPanel.add(Box.createVerticalStrut(8));
         refreshChat();
 
-        return wrapper;
+        return new LoadingBubble(wrapper, message);
+    }
+
+    private void updateAssistantLoadingMessage(LoadingBubble loadingBubble, String statusText) {
+        if (loadingBubble == null || loadingBubble.messageArea == null || statusText == null || statusText.isBlank()) {
+            return;
+        }
+
+        SwingUtilities.invokeLater(() -> {
+            loadingBubble.messageArea.setText(statusText);
+            refreshChat();
+            scrollToBottom();
+        });
+    }
+
+    private static class LoadingBubble {
+        private final JPanel wrapper;
+        private final JTextArea messageArea;
+
+        private LoadingBubble(JPanel wrapper, JTextArea messageArea) {
+            this.wrapper = wrapper;
+            this.messageArea = messageArea;
+        }
     }
 
     private void addAssistantTextMessage(String textValue) {
@@ -523,7 +559,8 @@ public class AdminAIFrame extends javax.swing.JFrame {
             return null;
         }
 
-        if (intent.equals("get_table_records")
+        if (intent.equals("execute_sql")
+                || intent.equals("get_table_records")
                 || intent.equals("get_active_records")
                 || intent.equals("get_archived_records")
                 || intent.equals("get_admin_users")
@@ -620,6 +657,59 @@ public class AdminAIFrame extends javax.swing.JFrame {
         return area;
     }
 
+    private boolean needsConfirmation(JSONObject actionJson) {
+        String intent = actionJson.optString("intent", "");
+
+        if ("execute_sql".equals(intent)) {
+            if (actionJson.has("requires_confirmation")) {
+                return actionJson.optBoolean("requires_confirmation", true);
+            }
+
+            String sql = actionJson.optString("sql", "").trim().toLowerCase();
+            return sql.startsWith("insert") || sql.startsWith("update") || sql.startsWith("delete");
+        }
+
+        return needsConfirmation(intent);
+    }
+
+    private String buildConfirmationMessage(JSONObject actionJson) {
+        String message = "Are you sure you want to proceed?\n\nThis action may change your database records.";
+
+        if ("execute_sql".equals(actionJson.optString("intent", ""))) {
+            String sql = actionJson.optString("sql", "").trim();
+            String aiMessage = actionJson.optString("message", "").trim();
+
+            if (!aiMessage.isBlank()) {
+                message += "\n\nAI plan: " + aiMessage;
+            }
+
+            if (!sql.isBlank()) {
+                message += "\n\nSQL to run:\n" + sql;
+            }
+        } else {
+            JSONObject data = actionJson.optJSONObject("data");
+            if (data != null) {
+                String table = data.optString("table", "").trim();
+                String name = data.optString("name", "").trim();
+                int id = data.optInt("id", 0);
+
+                if (!table.isBlank()) {
+                    message += "\n\nTable: " + table;
+                }
+
+                if (id > 0) {
+                    message += "\nID: " + id;
+                }
+
+                if (!name.isBlank()) {
+                    message += "\nName: " + name;
+                }
+            }
+        }
+
+        return message;
+    }
+
     private boolean needsConfirmation(String intent) {
         return intent.equals("create_student")
                 || intent.equals("update_student")
@@ -628,7 +718,10 @@ public class AdminAIFrame extends javax.swing.JFrame {
                 || intent.equals("create_record")
                 || intent.equals("update_record")
                 || intent.equals("archive_record")
+                || intent.equals("archive_record_by_name")
+                || intent.equals("delete_record_by_name")
                 || intent.equals("restore_record")
+                || intent.equals("restore_record_by_name")
                 || intent.equals("restore_student")
                 || intent.equals("delete_record");
     }
@@ -637,11 +730,12 @@ public class AdminAIFrame extends javax.swing.JFrame {
         if (!result.toLowerCase().contains("successfully")) return;
 
         String message = switch (intent) {
+            case "execute_sql" -> "SQL operation executed successfully.";
             case "create_student", "create_record" -> "Record created successfully.";
             case "update_student", "update_record" -> "Record updated successfully.";
-            case "archive_student", "archive_record" -> "Record archived successfully.";
-            case "restore_student", "restore_record" -> "Record restored successfully.";
-            case "delete_student", "delete_record" -> "Record deleted successfully.";
+            case "archive_student", "archive_record", "archive_record_by_name", "delete_record_by_name" -> "Record archived successfully.";
+            case "restore_student", "restore_record", "restore_record_by_name" -> "Record restored successfully.";
+            case "delete_student", "delete_record" -> "Record archived successfully.";
             default -> null;
         };
 
