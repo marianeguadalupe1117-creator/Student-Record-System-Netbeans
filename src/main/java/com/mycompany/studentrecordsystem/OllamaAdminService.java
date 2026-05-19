@@ -42,44 +42,53 @@ public class OllamaAdminService {
 
     public static JSONObject getAdminAction(String adminPrompt, String selectedTable, int selectedId, Consumer<String> progressCallback) throws Exception {
 
-        notifyProgress(progressCallback, "Ana is processing your request...");
+        notifyProgress(progressCallback, "Ana is asking the AI first...");
 
+        
         JSONObject directSqlAction = tryDirectSql(adminPrompt, selectedTable, selectedId);
         if (isUsableDirectSqlAction(directSqlAction)) {
-            directSqlAction.put("analysis_layer", "direct_ai");
+            directSqlAction.put("analysis_layer", "direct_ai_first");
             return directSqlAction;
         }
 
-        notifyProgress(progressCallback, "Ana is checking the intent...");
-
-        JSONObject localIntent = detectIntentLocally(adminPrompt, selectedTable, selectedId);
-        if (isUsableIntentAction(localIntent)) {
-            localIntent.put("analysis_layer", "intent_fallback");
-            return localIntent;
-        }
+        notifyProgress(progressCallback, "Ana is checking the AI intent...");
 
         JSONObject aiIntent = tryOllamaIntent(adminPrompt, selectedTable, selectedId);
         if (isUsableIntentAction(aiIntent)) {
-            aiIntent.put("analysis_layer", "intent_fallback");
+            aiIntent.put("analysis_layer", "ai_intent_second");
             return aiIntent;
         }
 
-        if (isUnknownIntent(directSqlAction)) {
-            directSqlAction.put("analysis_layer", "direct_ai");
-            return directSqlAction;
+        notifyProgress(progressCallback, "Ana is checking local fallback rules...");
+
+        JSONObject statusReadIntent = detectForcedStatusReadIntent(adminPrompt, selectedTable);
+        if (isUsableIntentAction(statusReadIntent)) {
+            statusReadIntent.put("analysis_layer", "local_status_fallback");
+            return statusReadIntent;
         }
 
-        if (isUnknownIntent(localIntent)) {
-            localIntent.put("analysis_layer", "intent_fallback");
+        JSONObject localIntent = detectIntentLocally(adminPrompt, selectedTable, selectedId);
+        if (isUsableIntentAction(localIntent)) {
+            localIntent.put("analysis_layer", "local_intent_fallback");
             return localIntent;
         }
 
+        if (isUnknownIntent(directSqlAction)) {
+            directSqlAction.put("analysis_layer", "direct_ai_first");
+            return directSqlAction;
+        }
+
         if (isUnknownIntent(aiIntent)) {
-            aiIntent.put("analysis_layer", "intent_fallback");
+            aiIntent.put("analysis_layer", "ai_intent_second");
             return aiIntent;
         }
 
-        return unknown("Invalid information.").put("analysis_layer", "intent_fallback");
+        if (isUnknownIntent(localIntent)) {
+            localIntent.put("analysis_layer", "local_intent_fallback");
+            return localIntent;
+        }
+
+        return unknown("Invalid information.").put("analysis_layer", "no_layer_matched");
     }
 
     private static void notifyProgress(Consumer<String> progressCallback, String message) {
@@ -146,6 +155,86 @@ public class OllamaAdminService {
         return looksSafeEnoughForFirstLayer(sql);
     }
 
+    private static JSONObject detectForcedStatusReadIntent(String prompt, String selectedTable) {
+        String text = normalize(prompt);
+        if (text.isBlank()) {
+            return null;
+        }
+
+        boolean isRead = containsAny(text,
+                "show", "list", "view", "get", "find", "display", "select", "see", "open", "fetch", "give me");
+        boolean isCount = containsAny(text,
+                "count", "how many", "total number", "number of");
+
+        if (!isRead && !isCount) {
+            return null;
+        }
+
+        String table = detectTable(text);
+        if (table == null && selectedTable != null && !selectedTable.isBlank()) {
+            table = selectedTable.trim();
+        }
+
+        if (table == null || table.isBlank()) {
+            return null;
+        }
+
+        boolean asksArchivedOrInactive = containsAny(text,
+                "archived",
+                "archive list",
+                "inactive",
+                "deactivated",
+                "disabled",
+                "not active",
+                "deleted",
+                "removed",
+                "soft deleted",
+                "soft-deleted");
+
+        boolean asksActive = containsAny(text,
+                "active",
+                "enabled",
+                "current") && !asksArchivedOrInactive;
+
+        if (asksArchivedOrInactive) {
+            if (isCount) {
+                return new JSONObject()
+                        .put("intent", "count_archived_records")
+                        .put("data", new JSONObject().put("table", table));
+            }
+
+            if ("students".equals(table)) {
+                return new JSONObject()
+                        .put("intent", "get_archived_students")
+                        .put("data", new JSONObject());
+            }
+
+            return new JSONObject()
+                    .put("intent", "get_archived_records")
+                    .put("data", new JSONObject().put("table", table));
+        }
+
+        if (asksActive) {
+            if (isCount) {
+                return new JSONObject()
+                        .put("intent", "count_active_records")
+                        .put("data", new JSONObject().put("table", table));
+            }
+
+            if ("students".equals(table)) {
+                return new JSONObject()
+                        .put("intent", "get_active_students")
+                        .put("data", new JSONObject());
+            }
+
+            return new JSONObject()
+                    .put("intent", "get_active_records")
+                    .put("data", new JSONObject().put("table", table));
+        }
+
+        return null;
+    }
+
     private static JSONObject detectIntentLocally(String prompt, String selectedTable, int selectedId) {
         String text = normalize(prompt);
         String original = prompt == null ? "" : prompt.trim();
@@ -174,7 +263,8 @@ public class OllamaAdminService {
                 "delete", "remove", "drop", "erase", "destroy", "permanently remove");
 
         boolean isArchivedRead = containsAny(text,
-                "archived", "archive list", "inactive", "deactivated", "disabled", "not active");
+                "archived", "archive list", "inactive", "deactivated", "disabled", "not active",
+                "deleted", "removed", "soft deleted", "soft-deleted");
 
         boolean isActiveRead = containsAny(text,
                 "active", "enabled", "current") && !isArchivedRead;
@@ -559,7 +649,7 @@ public class OllamaAdminService {
             return normalizeStatus(statusMatcher.group(1));
         }
 
-        if (containsAny(normalizedText, "archive", "archived", "inactive", "deactivate", "disabled", "not active")) {
+        if (containsAny(normalizedText, "archive", "archived", "inactive", "deactivate", "disabled", "not active", "deleted", "removed", "soft deleted", "soft-deleted")) {
             return "Archived";
         }
 
@@ -572,7 +662,8 @@ public class OllamaAdminService {
 
     private static String normalizeStatus(String value) {
         String v = value == null ? "" : value.toLowerCase().replaceAll("[^a-z ]", "").trim();
-        if (v.contains("archive") || v.contains("inactive") || v.contains("disable") || v.contains("deactivate") || v.contains("not active")) {
+        if (v.contains("archive") || v.contains("inactive") || v.contains("disable") || v.contains("deactivate") || v.contains("not active")
+                || v.contains("deleted") || v.contains("removed") || v.contains("soft deleted")) {
             return "Archived";
         }
         if (v.contains("active") || v.contains("enable") || v.contains("reactivate")) {
@@ -826,6 +917,8 @@ public class OllamaAdminService {
             - For SELECT list/search commands, add LIMIT 100 unless the command asks for a count/total.
             - UPDATE and DELETE must include a clear WHERE clause using an id, code, exact email, exact name, or selected record context.
             - If the command says delete/remove/archive/deactivate/disable/soft delete, use UPDATE and set the status-like column to 'Archived'. Do not use DELETE unless the user explicitly says "permanently delete".
+            - For READ commands, if the user asks for active records, query records where status = 'Active'. Do not use student_status for active/inactive account status.
+            - For READ commands, if the user asks for deleted, removed, soft-deleted, archived, inactive, deactivated, or disabled records, query records where status = 'Archived'. This system does not store deleted records as status = 'Deleted' or status = 'Inactive'; delete/inactive means archived.
             - If the command says restore/unarchive/reactivate/activate, use UPDATE and set the status-like column to 'Active'.
             - If the table has user_status/admin_status/student_status instead of status, use the real column from the schema.
             - Do not invent columns. Use only columns that appear in the schema.
@@ -841,6 +934,10 @@ public class OllamaAdminService {
 
             Examples:
             "show all students" -> {"intent":"execute_sql","operation":"READ","sql":"SELECT * FROM students LIMIT 100","requires_confirmation":false,"message":"Showing students."}
+            "show active students" -> {"intent":"execute_sql","operation":"READ","sql":"SELECT * FROM students WHERE status = 'Active' LIMIT 100","requires_confirmation":false,"message":"Showing active students."}
+            "show inactive students" -> {"intent":"execute_sql","operation":"READ","sql":"SELECT * FROM students WHERE status = 'Archived' LIMIT 100","requires_confirmation":false,"message":"Showing inactive/archived students."}
+            "show deleted students" -> {"intent":"execute_sql","operation":"READ","sql":"SELECT * FROM students WHERE status = 'Archived' LIMIT 100","requires_confirmation":false,"message":"Showing archived/deleted students."}
+            "show archived or deleted students" -> {"intent":"execute_sql","operation":"READ","sql":"SELECT * FROM students WHERE status = 'Archived' LIMIT 100","requires_confirmation":false,"message":"Showing archived/deleted students."}
             "how many active students" -> {"intent":"execute_sql","operation":"READ","sql":"SELECT COUNT(*) AS total FROM students WHERE status = 'Active'","requires_confirmation":false,"message":"Counting active students."}
             "delete Ana Esteban" with selected table students -> {"intent":"execute_sql","operation":"UPDATE","sql":"UPDATE students SET status = 'Archived' WHERE LOWER(CONCAT_WS(' ', first_name, middle_name, last_name)) LIKE '%ana%' AND LOWER(CONCAT_WS(' ', first_name, middle_name, last_name)) LIKE '%esteban%'","requires_confirmation":true,"message":"Archive matching student instead of permanently deleting."}
             "archive student 5" -> {"intent":"execute_sql","operation":"UPDATE","sql":"UPDATE students SET status = 'Archived' WHERE student_id = 5","requires_confirmation":true,"message":"Archive student 5."}

@@ -367,9 +367,13 @@ public class AdminAIFrame extends javax.swing.JFrame {
                 });
 
             } catch (Exception ex) {
+                ex.printStackTrace();
                 SwingUtilities.invokeLater(() -> {
                     chatMessagesPanel.remove(loadingBubble.wrapper);
-                    addAssistantTextMessage("Invalid information.");
+                    String errorMessage = ex.getMessage() == null || ex.getMessage().isBlank()
+                            ? "Invalid information."
+                            : "Invalid information: " + ex.getMessage();
+                    addAssistantTextMessage(errorMessage);
                     resetSendButton();
                 });
             }

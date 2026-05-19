@@ -776,6 +776,7 @@ public class AdminActionExecutor {
     private static String executeSqlOperation(JSONObject actionJson) throws Exception {
         String sql = extractSqlFromAction(actionJson);
         String cleanedSql = cleanAndValidateSql(sql);
+        cleanedSql = normalizeStatusReadSql(cleanedSql);
         String firstWord = firstSqlWord(cleanedSql);
 
         try (Connection conn = DBConnection.getConnection()) {
@@ -804,6 +805,69 @@ public class AdminActionExecutor {
                         : "SQL operation completed, but no records were changed.";
             }
         }
+    }
+
+    private static String normalizeStatusReadSql(String sql) {
+        if (sql == null || sql.isBlank()) {
+            return sql;
+        }
+
+        String firstWord = firstSqlWord(sql);
+        if (!"select".equals(firstWord)) {
+            return sql;
+        }
+
+        String normalized = sql;
+
+        String archivedWords = "deleted|removed|soft[-\\s]?deleted|inactive|deactivated|disabled|archived";
+        String activeWords = "active|enabled|current";
+
+        normalized = normalized.replaceAll(
+                "(?i)LOWER\\s*\\(\\s*`?student_status`?\\s*\\)\\s*=\\s*LOWER\\s*\\(\\s*['\\\"]\\s*(" + activeWords + ")\\s*['\\\"]\\s*\\)",
+                "LOWER(status) = LOWER('Active')"
+        );
+
+        normalized = normalized.replaceAll(
+                "(?i)LOWER\\s*\\(\\s*`?student_status`?\\s*\\)\\s*=\\s*LOWER\\s*\\(\\s*['\\\"]\\s*(" + archivedWords + ")\\s*['\\\"]\\s*\\)",
+                "LOWER(status) = LOWER('Archived')"
+        );
+
+        normalized = normalized.replaceAll(
+                "(?i)LOWER\\s*\\(\\s*`?status`?\\s*\\)\\s*=\\s*LOWER\\s*\\(\\s*['\\\"]\\s*(" + archivedWords + ")\\s*['\\\"]\\s*\\)",
+                "LOWER(status) = LOWER('Archived')"
+        );
+
+        normalized = normalized.replaceAll(
+                "(?i)(?<![A-Za-z0-9_])`?student_status`?\\s*=\\s*['\\\"]\\s*(" + activeWords + ")\\s*['\\\"]",
+                "status = 'Active'"
+        );
+
+        normalized = normalized.replaceAll(
+                "(?i)(?<![A-Za-z0-9_])`?student_status`?\\s*=\\s*['\\\"]\\s*(" + archivedWords + ")\\s*['\\\"]",
+                "status = 'Archived'"
+        );
+
+        normalized = normalized.replaceAll(
+                "(?i)(?<![A-Za-z0-9_])`?status`?\\s*=\\s*['\\\"]\\s*(" + archivedWords + ")\\s*['\\\"]",
+                "status = 'Archived'"
+        );
+
+        normalized = normalized.replaceAll(
+                "(?i)(?<![A-Za-z0-9_])`?student_status`?\\s+LIKE\\s*['\\\"]%?\\s*(" + activeWords + ")\\s*%?['\\\"]",
+                "status = 'Active'"
+        );
+
+        normalized = normalized.replaceAll(
+                "(?i)(?<![A-Za-z0-9_])`?student_status`?\\s+LIKE\\s*['\\\"]%?\\s*(" + archivedWords + ")\\s*%?['\\\"]",
+                "status = 'Archived'"
+        );
+
+        normalized = normalized.replaceAll(
+                "(?i)(?<![A-Za-z0-9_])`?status`?\\s+LIKE\\s*['\\\"]%?\\s*(" + archivedWords + ")\\s*%?['\\\"]",
+                "status = 'Archived'"
+        );
+
+        return normalized;
     }
 
     private static String archiveDeleteSql(Connection conn, String deleteSql) throws Exception {
@@ -968,7 +1032,8 @@ public class AdminActionExecutor {
         }
 
         if (!found) {
-            return "No records found.";
+            result.append("No records found.\n");
+            return result.toString();
         }
 
         return result.toString();
@@ -1072,7 +1137,7 @@ public class AdminActionExecutor {
     }
 
     private static String getArchivedStudents() throws Exception {
-        return getSimpleStudentList(ARCHIVED_STATUS, "Archived students:", "status");
+        return getSimpleStudentList(ARCHIVED_STATUS, "Inactive/Archived students:", "status");
     }
 
     private static String getActiveStudents() throws Exception {
@@ -1118,7 +1183,8 @@ public class AdminActionExecutor {
                     }
 
                     if (!found) {
-                        return "No records found.";
+                        result.append("No records found.\n");
+                        return result.toString();
                     }
                 }
             }
