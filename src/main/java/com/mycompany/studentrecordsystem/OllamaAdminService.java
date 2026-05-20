@@ -42,7 +42,7 @@ public class OllamaAdminService {
 
     public static JSONObject getAdminAction(String adminPrompt, String selectedTable, int selectedId, Consumer<String> progressCallback) throws Exception {
 
-        notifyProgress(progressCallback, "Ana is asking the AI first...");
+        notifyProgress(progressCallback, "Ana is thinking...");
 
         
         JSONObject directSqlAction = tryDirectSql(adminPrompt, selectedTable, selectedId);

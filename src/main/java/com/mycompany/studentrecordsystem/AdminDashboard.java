@@ -180,6 +180,7 @@ public class AdminDashboard extends javax.swing.JFrame {
         adminsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         adminsButton.setBorderPainted(false);
         adminsButton.setFocusPainted(false);
+        adminsButton.addActionListener(this::adminsButtonActionPerformed);
         sidebarMenuPanel.add(adminsButton);
 
         studentsButton.setBackground(new java.awt.Color(18, 58, 91));
@@ -189,6 +190,7 @@ public class AdminDashboard extends javax.swing.JFrame {
         studentsButton.setBorder(javax.swing.BorderFactory.createEmptyBorder(10, 12, 10, 12));
         studentsButton.setBorderPainted(false);
         studentsButton.setFocusPainted(false);
+        studentsButton.addActionListener(this::studentsButtonActionPerformed);
         sidebarMenuPanel.add(studentsButton);
 
         coursesButton.setBackground(new java.awt.Color(18, 58, 91));
@@ -543,6 +545,14 @@ public class AdminDashboard extends javax.swing.JFrame {
     private void dashboardButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_dashboardButtonActionPerformed
         // TODO add your handling code here:
     }//GEN-LAST:event_dashboardButtonActionPerformed
+
+    private void adminsButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_adminsButtonActionPerformed
+        // TODO add your handling code here:
+    }//GEN-LAST:event_adminsButtonActionPerformed
+
+    private void studentsButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_studentsButtonActionPerformed
+        // TODO add your handling code here:
+    }//GEN-LAST:event_studentsButtonActionPerformed
 
     private void setupFormDashboard() {
         setLocationRelativeTo(null);
@@ -1929,25 +1939,7 @@ private void openCrudDialog() {
         return displayName(column);
     }
 
-    private String iconForTable(String table) {
-        switch (table) {
-            case "admins": return "♛";
-            case "students": return "♟";
-            case "courses": return "▣";
-            case "curriculum": return "▤";
-            case "departments": return "⌂";
-            case "enrollments": return "✓";
-            case "grades": return "★";
-            case "instructors": return "◉";
-            case "rooms": return "▦";
-            case "schedules": return "◷";
-            case "school_years": return "◫";
-            case "sections": return "▥";
-            case "semesters": return "◌";
-            case "subjects": return "◆";
-            default: return "•";
-        }
-    }
+
 
     private void openAdminAIFrame() {
         try {
